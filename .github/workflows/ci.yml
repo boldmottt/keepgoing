@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: ["claude/busy-bell-fo6aob"]
+
+# 동일 브랜치에서 새 푸시가 오면 이전 실행 취소
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functions:
+    name: functions (tsc build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for functions project
+        id: check
+        run: |
+          if [ -f functions/package.json ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "functions/package.json 없음 — 스킵"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.exists == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install
+        if: steps.check.outputs.exists == 'true'
+        working-directory: functions
+        run: npm ci || npm install
+
+      - name: Build (tsc)
+        if: steps.check.outputs.exists == 'true'
+        working-directory: functions
+        run: npm run build
+
+  web:
+    name: web (next build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for web project
+        id: check
+        run: |
+          if [ -f web/package.json ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "web/package.json 없음 — 스킵"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.exists == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        if: steps.check.outputs.exists == 'true'
+        working-directory: web
+        run: npm ci || npm install
+
+      - name: Build (next build)
+        if: steps.check.outputs.exists == 'true'
+        working-directory: web
+        run: npm run build
