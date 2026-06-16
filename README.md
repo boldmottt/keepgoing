@@ -35,8 +35,10 @@ keepgoing/
 | `claude/busy-bell-fo6aob` | 모노레포 뼈대, 폴더 구조, 공유 스펙/더미 데이터 (base) |
 | `feature/firebase-backend` | Firestore 구조, Cloud Functions, 점수 검증, 시드 |
 | `feature/unity-client` | 3레인 러너, 입력, 장애물, 점수/콤보, 특별 스테이지 |
-| `feature/web-public` | 공개 기부 홈페이지 |
-| `feature/web-admin` | 관리자 페이지 MVP |
+| `feature/web-frontend` | 공개 기부 홈페이지 + 관리자 페이지 MVP |
+
+> 앞으로의 브랜치 분리·네이밍·머지 순서·CI 규칙은 [`docs/BRANCHING.md`](docs/BRANCHING.md)를 따릅니다.
+> 핵심: **리뷰 가능한 동작 단위로 잘게 · 공유 계약은 먼저·따로 · 브랜치는 짧게.**
 
 ## 점수 / 기부 포인트 공식
 
