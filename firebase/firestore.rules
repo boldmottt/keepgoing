@@ -1,0 +1,24 @@
+rules_version = '2';
+
+// 기본 규칙: 공개 읽기 컬렉션은 누구나 읽기 가능, 쓰기는 Cloud Functions(Admin SDK)만.
+// 상세 규칙은 feature/firebase-backend 브랜치에서 보강합니다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 공개적으로 읽을 수 있는 데이터
+    match /seasons/{seasonId}          { allow read: if true; allow write: if false; }
+    match /donationProjects/{projectId}{ allow read: if true; allow write: if false; }
+    match /sponsorCampaigns/{id}       { allow read: if true; allow write: if false; }
+    match /specialStages/{id}          { allow read: if true; allow write: if false; }
+    match /donationReports/{id}        { allow read: if resource.data.published == true; allow write: if false; }
+    match /leaderboards/{seasonId}/entries/{uid}      { allow read: if true; allow write: if false; }
+    match /projectLeaderboards/{projectId}/entries/{uid} { allow read: if true; allow write: if false; }
+
+    // 본인 문서만 읽기. 모든 쓰기는 Cloud Functions를 통해서만.
+    match /users/{uid} { allow read: if request.auth != null && request.auth.uid == uid; allow write: if false; }
+
+    // 게임 기록/원장은 클라이언트 직접 접근 금지 (Functions 전용)
+    match /runs/{runId}              { allow read, write: if false; }
+    match /donationPointLedger/{id} { allow read, write: if false; }
+  }
+}

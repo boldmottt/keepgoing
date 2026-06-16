@@ -1,0 +1,43 @@
+# Node / Next.js / Functions
+node_modules/
+.next/
+out/
+dist/
+lib/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*serviceAccount*.json
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebase/
+
+# Unity
+unity-client/[Ll]ibrary/
+unity-client/[Tt]emp/
+unity-client/[Oo]bj/
+unity-client/[Bb]uild/
+unity-client/[Bb]uilds/
+unity-client/[Ll]ogs/
+unity-client/[Uu]ser[Ss]ettings/
+unity-client/[Mm]emoryCaptures/
+*.csproj
+*.sln
+*.unityproj
+*.apk
+*.aab
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
