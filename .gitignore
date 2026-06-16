@@ -35,6 +35,9 @@ unity-client/[Mm]emoryCaptures/
 *.apk
 *.aab
 
+# Claude Code agent worktrees / local
+.claude/
+
 # OS / editor
 .DS_Store
 Thumbs.db
