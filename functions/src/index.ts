@@ -13,6 +13,7 @@ export { getActiveSeason } from "./seasons";
 
 // 사용자 프로필
 export { setNickname, setDefaultDonationProject } from "./auth";
+export { getUserProfile, getMyRuns } from "./profile";
 
 // 런(게임 기록)
 export { startRun, finishRun } from "./runs";
