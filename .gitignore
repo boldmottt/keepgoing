@@ -5,6 +5,9 @@ out/
 dist/
 # Firebase Functions 컴파일 산출물만 무시 (web/lib 등 소스 디렉터리는 추적)
 functions/lib/
+# Next.js 자동 생성 타입 파일 (빌드 시 재생성)
+next-env.d.ts
+*.tsbuildinfo
 *.log
 npm-debug.log*
 yarn-debug.log*
