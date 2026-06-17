@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace KeepGoing.Donation
 {
@@ -90,6 +91,76 @@ namespace KeepGoing.Donation
             // 기본 선택 = 첫 번째 active 프로젝트.
             SelectedProjectId = _projects.FirstOrDefault(p => p.IsActive)?.projectId;
         }
+
+        /// <summary>
+        /// MVP2: getActiveSeason() 백엔드 응답으로 프로젝트 목록을 채운다(같은 백엔드 토글 뒤에서 동작).
+        /// useFirebaseBackend=false 이거나 SDK 미임포트/오류 시 더미 프로젝트를 유지(로컬 폴백).
+        /// 게임 코드는 시작 시 이 메서드를 한 번 await 하면 된다.
+        /// </summary>
+        public async Task LoadFromActiveSeasonAsync(bool useFirebaseBackend)
+        {
+            if (!useFirebaseBackend)
+            {
+                // 로컬 폴백: 더미 프로젝트 유지.
+                return;
+            }
+
+#if KEEPGOING_FIREBASE
+            try
+            {
+                var functions = global::Firebase.Functions.FirebaseFunctions.GetInstance("asia-northeast3");
+                var callable = functions.GetHttpsCallable("getActiveSeason");
+                var result = await callable.CallAsync();
+
+                var data = result.Data as IDictionary<object, object>;
+                if (data == null || !data.TryGetValue("projects", out var projectsObj)) return;
+                if (!(projectsObj is IEnumerable<object> rawProjects)) return;
+
+                var parsed = new List<DonationProject>();
+                foreach (var item in rawProjects)
+                {
+                    if (!(item is IDictionary<object, object> p)) continue;
+                    parsed.Add(new DonationProject
+                    {
+                        projectId = Str(p, "projectId"),
+                        seasonId = Str(p, "seasonId"),
+                        title = Str(p, "title"),
+                        description = Str(p, "description"),
+                        organizationName = Str(p, "organizationName"),
+                        imageUrl = Str(p, "imageUrl"),
+                        targetAmount = Lng(p, "targetAmount"),
+                        confirmedPoints = Lng(p, "confirmedPoints"),
+                        estimatedDonationAmount = Lng(p, "estimatedDonationAmount"),
+                        participantCount = (int)Lng(p, "participantCount"),
+                        status = Str(p, "status"),
+                    });
+                }
+
+                if (parsed.Count > 0)
+                {
+                    LoadFrom(parsed);
+                }
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogWarning($"[DonationProjectService] getActiveSeason 실패, 로컬 폴백 유지: {e.Message}");
+            }
+#else
+            // SDK 미임포트: 로컬 폴백 유지.
+            await Task.CompletedTask;
+#endif
+        }
+
+#if KEEPGOING_FIREBASE
+        private static string Str(IDictionary<object, object> d, string key)
+            => d != null && d.TryGetValue(key, out var v) && v != null ? v.ToString() : null;
+
+        private static long Lng(IDictionary<object, object> d, string key)
+        {
+            if (d == null || !d.TryGetValue(key, out var v) || v == null) return 0L;
+            try { return Convert.ToInt64(v); } catch { return 0L; }
+        }
+#endif
 
         /// <summary>MVP2: 서버에서 받은 프로젝트 목록으로 교체.</summary>
         public void LoadFrom(IEnumerable<DonationProject> projects)
