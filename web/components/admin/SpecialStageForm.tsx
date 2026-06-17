@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import AdminFormShell from './AdminFormShell';
-import { ADMIN_FUNCTIONS } from '@/lib/functions';
+import { saveSpecialStage } from '@/lib/functions';
 
 // 특별 스테이지 설정
 export default function SpecialStageForm() {
@@ -25,13 +25,23 @@ export default function SpecialStageForm() {
     <>
       <h2>특별 스테이지 설정</h2>
       <AdminFormShell
-        functionName={ADMIN_FUNCTIONS.upsertSpecialStage}
-        buildPayload={() => ({
-          ...f,
-          durationSec: Number(f.durationSec) || 0,
-          scoreMultiplier: Number(f.scoreMultiplier) || 1,
-          assetBundleUrl: f.assetBundleUrl || null,
-        })}
+        submit={() =>
+          saveSpecialStage({
+            stageId: f.stageId.trim() || undefined,
+            campaignId: f.campaignId,
+            stageName: f.stageName,
+            theme: f.theme,
+            durationSec: Number(f.durationSec) || 0,
+            scoreMultiplier: Number(f.scoreMultiplier) || 1,
+            brandName: f.brandName,
+            brandLogoUrl: f.brandLogoUrl,
+            assetBundleUrl: f.assetBundleUrl || null,
+            status: f.status,
+          })
+        }
+        successMessage={(res) =>
+          `특별 스테이지 저장 완료 (id: ${(res.data as { stageId?: string })?.stageId ?? f.stageId}).`
+        }
       >
         <div className="grid grid-2">
           <div className="form-row">

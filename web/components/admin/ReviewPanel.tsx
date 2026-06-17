@@ -1,10 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { callFunction, ADMIN_FUNCTIONS } from '@/lib/functions';
 
 // 의심 유저 / rejected run 검수.
-// 실제 목록은 백엔드 조회 함수 연동 필요. 여기서는 더미 행 + 검수 액션 UI 를 제공한다.
+//
+// NOTE(backend): 현재 functions/src/admin.ts 에는 검수용 callable
+// (예: reviewRun, banUser) 과 의심 목록 조회 함수가 존재하지 않는다.
+// 백엔드 계약이 추가되기 전까지 이 패널은 로컬 UI 데모로만 동작한다.
+// 백엔드 추가 시 lib/functions.ts 에 타입드 래퍼를 만들어 review() 에서 호출한다.
 interface SuspectRun {
   runId: string;
   uid: string;
@@ -40,17 +43,11 @@ export default function ReviewPanel() {
   const [rows, setRows] = useState<SuspectRun[]>(MOCK_SUSPECTS);
   const [msg, setMsg] = useState<string | null>(null);
 
-  async function review(runId: string, action: 'confirm' | 'reject' | 'ban') {
-    setMsg(null);
-    const res = await callFunction(ADMIN_FUNCTIONS.reviewRun, { runId, action });
-    setMsg(
-      res.mocked
-        ? `미연동 환경: ${runId} → ${action} 호출을 흉내냈습니다.`
-        : res.ok
-          ? `${runId} → ${action} 처리됨.`
-          : `오류: ${res.error}`,
-    );
-    if (res.ok && action !== 'ban') {
+  // NOTE(backend): 검수 callable 이 백엔드에 추가되면 여기서 호출한다.
+  // 지금은 백엔드 계약이 없어 로컬 상태만 갱신하는 UI 데모다.
+  function review(runId: string, action: 'confirm' | 'reject' | 'ban') {
+    setMsg(`(데모) ${runId} → ${action}: 검수 callable 백엔드 연동 대기 중.`);
+    if (action !== 'ban') {
       setRows((r) => r.filter((x) => x.runId !== runId));
     }
   }
@@ -59,8 +56,8 @@ export default function ReviewPanel() {
     <>
       <h2>의심 유저 / rejected run 검수</h2>
       <p className="todo-note">
-        TODO(firebase-backend): 검수 목록 조회 + <code>{ADMIN_FUNCTIONS.reviewRun}</code>{' '}
-        callable 연동 필요. 아래는 UI 예시 데이터입니다.
+        검수 목록 조회/처리 callable 은 아직 백엔드(functions/src/admin.ts)에 없습니다.
+        백엔드 계약 추가 후 연동 예정이며, 아래는 UI 예시 데이터입니다.
       </p>
       {msg ? (
         <p className="badge" style={{ display: 'block', marginBottom: 12 }}>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import AdminFormShell from './AdminFormShell';
-import { ADMIN_FUNCTIONS } from '@/lib/functions';
+import { saveSponsorCampaign } from '@/lib/functions';
 
 // 후원 캠페인 생성/수정
 export default function CampaignForm() {
@@ -26,15 +26,27 @@ export default function CampaignForm() {
     <>
       <h2>후원 캠페인 생성 / 수정</h2>
       <AdminFormShell
-        functionName={ADMIN_FUNCTIONS.upsertCampaign}
-        buildPayload={() => ({
-          ...f,
-          donationPoolAmount: Number(f.donationPoolAmount) || 0,
-          linkedProjectIds: f.linkedProjectIds
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
-        })}
+        submit={() =>
+          saveSponsorCampaign({
+            campaignId: f.campaignId.trim() || undefined,
+            seasonId: f.seasonId,
+            sponsorName: f.sponsorName,
+            brandName: f.brandName,
+            title: f.title,
+            description: f.description,
+            linkedProjectIds: f.linkedProjectIds
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            donationPoolAmount: Number(f.donationPoolAmount) || 0,
+            startAt: f.startAt || undefined,
+            endAt: f.endAt || undefined,
+            status: f.status,
+          })
+        }
+        successMessage={(res) =>
+          `캠페인 저장 완료 (id: ${(res.data as { campaignId?: string })?.campaignId ?? f.campaignId}).`
+        }
       >
         <div className="grid grid-2">
           <div className="form-row">

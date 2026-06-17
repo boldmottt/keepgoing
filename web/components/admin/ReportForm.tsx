@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import AdminFormShell from './AdminFormShell';
-import { ADMIN_FUNCTIONS } from '@/lib/functions';
+import { saveDonationReport } from '@/lib/functions';
 
 // 기부 리포트 업로드 (증빙 파일 / 공개 여부)
 export default function ReportForm() {
@@ -25,11 +25,23 @@ export default function ReportForm() {
     <>
       <h2>기부 리포트 업로드</h2>
       <AdminFormShell
-        functionName={ADMIN_FUNCTIONS.uploadDonationReport}
-        buildPayload={() => ({
-          ...f,
-          finalDonationAmount: Number(f.finalDonationAmount) || 0,
-        })}
+        submit={() =>
+          saveDonationReport({
+            reportId: f.reportId.trim() || undefined,
+            seasonId: f.seasonId,
+            projectId: f.projectId,
+            organizationName: f.organizationName,
+            finalDonationAmount: Number(f.finalDonationAmount) || 0,
+            donatedAt: f.donatedAt || undefined,
+            proofFileUrl: f.proofFileUrl,
+            receiptFileUrl: f.receiptFileUrl,
+            publicMemo: f.publicMemo,
+            published: f.published,
+          })
+        }
+        successMessage={(res) =>
+          `리포트 저장 완료 (id: ${(res.data as { reportId?: string })?.reportId ?? f.reportId}).`
+        }
         submitLabel="리포트 저장"
       >
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>

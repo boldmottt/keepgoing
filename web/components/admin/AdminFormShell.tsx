@@ -1,17 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { callFunction } from '@/lib/functions';
+import type { CallResult } from '@/lib/functions';
 
-// 관리자 폼 공용 래퍼: callable 함수 호출 + 상태 메시지 표시.
+// 관리자 폼 공용 래퍼: 제출 핸들러 실행 + 로딩/성공/오류 상태 표시.
+// 각 폼은 lib/functions.ts 의 타입드 래퍼를 호출하는 submit 함수를 넘긴다.
 export default function AdminFormShell({
-  functionName,
-  buildPayload,
+  submit,
+  successMessage,
   submitLabel = '저장',
   children,
 }: {
-  functionName: string;
-  buildPayload: () => Record<string, unknown>;
+  submit: () => Promise<CallResult>;
+  // 성공 시 표시할 메시지(결과를 받아 동적으로 구성 가능).
+  successMessage?: (res: CallResult) => string;
   submitLabel?: string;
   children: React.ReactNode;
 }) {
@@ -24,27 +26,33 @@ export default function AdminFormShell({
     e.preventDefault();
     setBusy(true);
     setStatus(null);
-    const payload = buildPayload();
-    const res = await callFunction(functionName, payload);
-    if (res.ok) {
+    try {
+      const res = await submit();
+      if (res.ok) {
+        const base = successMessage
+          ? successMessage(res)
+          : '저장되었습니다.';
+        setStatus({
+          type: 'ok',
+          msg: res.mocked
+            ? `${base} (데모 모드: 실제 저장 없음)`
+            : base,
+        });
+      } else {
+        setStatus({ type: 'err', msg: res.error ?? '호출에 실패했습니다.' });
+      }
+    } catch (err) {
       setStatus({
-        type: 'ok',
-        msg: res.mocked
-          ? `미연동 환경: "${functionName}" 호출을 흉내냈습니다 (실제 저장 X).`
-          : `"${functionName}" 호출 성공.`,
+        type: 'err',
+        msg: err instanceof Error ? err.message : String(err),
       });
-    } else {
-      setStatus({ type: 'err', msg: res.error ?? '호출 실패' });
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   return (
     <form className="card" onSubmit={onSubmit}>
-      <p className="todo-note">
-        TODO(firebase-backend): 이 폼은 callable 함수 <code>{functionName}</code>{' '}
-        에 연결됩니다. 백엔드 시그니처 확정 후 입력/검증을 맞추세요.
-      </p>
       {children}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8 }}>
         <button className="btn" type="submit" disabled={busy}>

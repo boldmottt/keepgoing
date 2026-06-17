@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import AdminFormShell from './AdminFormShell';
-import { ADMIN_FUNCTIONS } from '@/lib/functions';
+import { saveProject } from '@/lib/functions';
 
 // 프로젝트 생성/수정
 export default function ProjectForm() {
@@ -23,8 +23,21 @@ export default function ProjectForm() {
     <>
       <h2>프로젝트 생성 / 수정</h2>
       <AdminFormShell
-        functionName={ADMIN_FUNCTIONS.upsertProject}
-        buildPayload={() => ({ ...f, targetAmount: Number(f.targetAmount) || 0 })}
+        submit={() =>
+          saveProject({
+            projectId: f.projectId.trim() || undefined,
+            seasonId: f.seasonId,
+            title: f.title,
+            description: f.description,
+            organizationName: f.organizationName,
+            imageUrl: f.imageUrl,
+            targetAmount: Number(f.targetAmount) || 0,
+            status: f.status,
+          })
+        }
+        successMessage={(res) =>
+          `프로젝트 저장 완료 (id: ${(res.data as { projectId?: string })?.projectId ?? f.projectId}).`
+        }
       >
         <div className="grid grid-2">
           <div className="form-row">
