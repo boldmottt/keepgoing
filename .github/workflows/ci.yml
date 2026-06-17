@@ -45,6 +45,11 @@ jobs:
         working-directory: functions
         run: npm run build
 
+      - name: Test (jest)
+        if: steps.check.outputs.exists == 'true'
+        working-directory: functions
+        run: npm test
+
   web:
     name: web (next build)
     runs-on: ubuntu-latest
