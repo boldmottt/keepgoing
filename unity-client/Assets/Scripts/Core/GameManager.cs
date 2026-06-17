@@ -40,6 +40,11 @@ namespace KeepGoing.Core
         [Tooltip("이 거리(m)마다 브랜드 포털이 등장할 수 있다")]
         public float brandPortalEveryMeters = 500f;
 
+        [Header("백엔드")]
+        [Tooltip("체크 시 실제 Firebase 백엔드(callable)에 연결. 해제 시 로컬 목으로 오프라인 동작. " +
+                 "실제 연결은 Firebase Unity SDK 임포트 + KEEPGOING_FIREBASE 심볼 필요(SETUP.md).")]
+        public bool useFirebaseBackend = false;
+
         [Header("참조 (인스펙터 연결 또는 자동 탐색)")]
         public PlayerController player;
         public ObstacleSpawner spawner;
@@ -64,6 +69,7 @@ namespace KeepGoing.Core
         public event Action<GameState> OnStateChanged;
 
         private string _currentRunId;
+        private FirebaseManager _firebase;
 
         private void Awake()
         {
@@ -77,16 +83,23 @@ namespace KeepGoing.Core
             Score = new ScoreManager();
             Projects = new DonationProjectService();
 
-            // MVP1: 로컬 목 구현. MVP2 에서 FirebaseRunApiClient 등으로 교체만 하면 된다.
-            var firebase = new FirebaseManager(useMock: true);
-            RunApi = firebase.RunApi;
-            Leaderboard = firebase.Leaderboard;
+            // useFirebaseBackend=false: 로컬 목(오프라인). true: 실제 Firebase callable.
+            // 어느 쪽이든 게임 코드는 IRunApiClient/ILeaderboardService 만 사용한다.
+            _firebase = new FirebaseManager(useFirebaseBackend);
+            RunApi = _firebase.RunApi;
+            Leaderboard = _firebase.Leaderboard;
         }
 
-        private void Start()
+        private async void Start()
         {
             if (input != null)
                 input.OnSwipe += HandleSwipe;
+
+            // Firebase 백엔드 사용 시: 의존성 확인 + 익명 로그인 + 시즌 프로젝트 로드.
+            // 목 모드에서는 즉시 완료된다(로컬 폴백).
+            await _firebase.InitializeAsync();
+            await Projects.LoadFromActiveSeasonAsync(useFirebaseBackend && !_firebase.IsMock);
+
             SetState(GameState.Splash);
         }
 

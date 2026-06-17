@@ -97,11 +97,52 @@ donationPoints = floor(gameScore * 0.1)
 
 `ScoreManager.cs` 가 이 공식을 그대로 구현합니다.
 
-## 6. 서버 연결(MVP2 예정)
+## 6. 서버 연결 (MVP2 — 실제 Firebase 백엔드)
 
-- 현재는 `FirebaseManager(useMock: true)` 로 로컬 목 구현이 동작합니다(오프라인).
-- MVP2 에서 `IRunApiClient` / `ILeaderboardService` 의 Firebase 구현을 추가하고
-  `FirebaseManager` 의 분기만 바꾸면 게임 코드 수정 없이 서버에 연결됩니다.
+게임 코드는 `IRunApiClient` / `ILeaderboardService` 인터페이스에만 의존하므로
+**목(mock) ↔ 실제 Firebase 구현을 토글 하나로 교체**할 수 있습니다.
+
+### 6.1 백엔드 토글
+
+- `GameManager` 인스펙터의 **`Use Firebase Backend`** 체크박스로 선택합니다.
+  - **해제(기본값):** 로컬 목 구현으로 오프라인/에디터에서 그대로 동작.
+  - **체크:** 실제 Firebase callable(`startRun`/`finishRun`/`get*Leaderboard`/`getActiveSeason`)에 연결.
+- 코드상으로는 `new FirebaseManager(useFirebaseBackend)` 가 구현을 선택하고,
+  `await firebase.InitializeAsync()` 가 의존성 확인 + 익명 로그인을 수행합니다.
+
+### 6.2 Firebase Unity SDK 임포트 (Auth + Functions)
+
+실제 구현(`FirebaseRunApiClient`, `FirebaseLeaderboardService`, `FirebaseManager` 의 초기화/
+익명 로그인 코드)은 **Firebase Unity SDK 가 임포트된 경우에만 컴파일**되도록
+`KEEPGOING_FIREBASE` 심볼로 감싸져 있습니다. 다음 순서로 활성화합니다.
+
+1. [Firebase Unity SDK](https://firebase.google.com/download/unity) 를 내려받습니다.
+2. 다음 `.unitypackage` 두 개를 Unity 에 임포트합니다(나머지는 불필요):
+   - `FirebaseAuth.unitypackage` (익명 인증)
+   - `FirebaseFunctions.unitypackage` (callable 함수)
+   - 의존성으로 `FirebaseApp`(core)이 함께 들어옵니다.
+3. **`google-services.json`**(Android) / **`GoogleService-Info.plist`**(iOS)를
+   Firebase 콘솔에서 받아 `Assets/` 아래에 둡니다(Firebase 에디터 확장이 자동 인식).
+4. Firebase 콘솔 > Authentication 에서 **익명(Anonymous) 로그인 공급자**를 활성화합니다.
+5. **Player Settings > Other Settings > Scripting Define Symbols** 에
+   **`KEEPGOING_FIREBASE`** 를 추가합니다(Android/iOS 양쪽).
+   - 심볼이 없으면 `useFirebaseBackend` 가 true 여도 안전하게 목으로 폴백합니다.
+
+### 6.3 리전
+
+- 백엔드 callable 은 **`asia-northeast3`** 리전에 배포됩니다.
+- 클라이언트는 `FirebaseFunctions.GetInstance("asia-northeast3")` 로 같은 리전을 호출합니다.
+
+### 6.4 동작 흐름
+
+1. `GameManager.Start()` 가 `FirebaseManager.InitializeAsync()` 호출
+   → `FirebaseApp.CheckAndFixDependenciesAsync()` → `SignInAnonymouslyAsync()`.
+2. `DonationProjectService.LoadFromActiveSeasonAsync(true)` 가 `getActiveSeason()` 으로
+   시즌 프로젝트 목록을 받아옵니다(실패 시 로컬 더미 폴백).
+3. 런 시작/종료 시 `startRun`/`finishRun` callable 이 호출됩니다.
+
+> 참고: Unity 컴파일은 이 환경에서 검증할 수 없어 수동 리뷰로만 확인했습니다.
+> SDK 임포트 후 실제 Unity 에디터에서 컴파일/동작 확인이 필요합니다.
 
 ## 7. 금지 사항 (절대 원칙)
 
