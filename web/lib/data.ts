@@ -1,9 +1,10 @@
 // 데이터 접근 레이어.
-// 기본은 로컬 mock 데이터(mockData.ts)로 동작하며, NEXT_PUBLIC_DATA_SOURCE=firebase 이고
-// Firebase 설정이 있으면 Firestore 에서 읽도록 소스를 교체할 수 있다.
+// 기본은 로컬 mock 데이터(mockData.ts)로 동작하며, NEXT_PUBLIC_DATA_SOURCE=firestore 이고
+// Firebase 설정이 있으면 Cloud Firestore 에서 읽도록 소스를 교체할 수 있다.
 //
-// Firestore 연동은 명세(SPEC §4)에 맞춘 컬렉션을 읽는 형태로 구현되어 있으나,
-// 라이브 프로젝트 없이도 사이트가 렌더되도록 mock 폴백이 기본값이다.
+// Firestore 연동은 명세(SPEC §4/§13)에 맞춘 컬렉션을 읽는 형태로 구현되어 있으나,
+// 라이브 프로젝트 없이도 정적 빌드(output: 'export')가 렌더되도록 mock 폴백이 기본값이다.
+// 읽기 실패(권한/네트워크/누락)에도 항상 mock 으로 폴백한다.
 
 import {
   collection,
@@ -13,6 +14,8 @@ import {
   query,
   where,
   orderBy,
+  Timestamp,
+  type DocumentData,
 } from 'firebase/firestore';
 
 import { getDb, isFirebaseConfigured } from './firebase';
@@ -35,12 +38,30 @@ import type {
   ProjectContributor,
 } from './types';
 
-function useFirebase(): boolean {
+// 라이브 모드 판단.
+// - NEXT_PUBLIC_DATA_SOURCE === 'firestore' 이고 Firebase env 가 설정되어 있어야 라이브.
+// - 그 외(기본 'mock', 미설정, env 누락)에는 mock 으로 동작 → 정적 빌드 항상 성공.
+// - 'firebase' 는 하위 호환을 위한 별칭으로 'firestore' 와 동일하게 취급한다.
+function useFirestore(): boolean {
   const src = process.env.NEXT_PUBLIC_DATA_SOURCE;
-  if (src === 'mock') return false;
-  if (src === 'firebase') return isFirebaseConfigured;
-  // 자동: 설정이 있으면 firebase, 없으면 mock.
-  return isFirebaseConfigured;
+  if (src === 'firestore' || src === 'firebase') return isFirebaseConfigured;
+  return false;
+}
+
+// Firestore Timestamp 등 직렬화 불가능한 값을 페이지가 기대하는 형태(ISO 문자열)로 정규화한다.
+// 페이지는 startAt/endAt/donatedAt 등을 string 으로 소비하므로 Timestamp → ISO 로 변환한다.
+function serialize<T>(data: DocumentData): T {
+  const out: DocumentData = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v instanceof Timestamp) {
+      out[k] = v.toDate().toISOString();
+    } else if (v && typeof v === 'object' && !Array.isArray(v)) {
+      out[k] = serialize(v as DocumentData);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out as T;
 }
 
 async function fbDocs<T>(path: string, constraints: any[] = []): Promise<T[] | null> {
@@ -51,7 +72,7 @@ async function fbDocs<T>(path: string, constraints: any[] = []): Promise<T[] | n
       ? query(collection(db, path), ...constraints)
       : query(collection(db, path));
     const snap = await getDocs(q);
-    return snap.docs.map((d) => d.data() as T);
+    return snap.docs.map((d) => serialize<T>(d.data()));
   } catch {
     return null;
   }
@@ -62,7 +83,7 @@ async function fbDoc<T>(path: string, id: string): Promise<T | null> {
   if (!db) return null;
   try {
     const snap = await getDoc(doc(db, path, id));
-    return snap.exists() ? (snap.data() as T) : null;
+    return snap.exists() ? serialize<T>(snap.data()) : null;
   } catch {
     return null;
   }
@@ -71,7 +92,7 @@ async function fbDoc<T>(path: string, id: string): Promise<T | null> {
 // ---- Seasons ----
 
 export async function getSeasons(): Promise<Season[]> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDocs<Season>('seasons');
     if (r) return r;
   }
@@ -79,7 +100,7 @@ export async function getSeasons(): Promise<Season[]> {
 }
 
 export async function getActiveSeason(): Promise<Season | null> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDocs<Season>('seasons', [where('status', '==', 'active')]);
     if (r && r.length) return r[0];
   }
@@ -87,7 +108,7 @@ export async function getActiveSeason(): Promise<Season | null> {
 }
 
 export async function getSeason(seasonId: string): Promise<Season | null> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDoc<Season>('seasons', seasonId);
     if (r) return r;
   }
@@ -97,7 +118,7 @@ export async function getSeason(seasonId: string): Promise<Season | null> {
 // ---- Projects ----
 
 export async function getProjects(): Promise<DonationProject[]> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDocs<DonationProject>('donationProjects');
     if (r) return r;
   }
@@ -107,7 +128,7 @@ export async function getProjects(): Promise<DonationProject[]> {
 export async function getProjectsBySeason(
   seasonId: string,
 ): Promise<DonationProject[]> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDocs<DonationProject>('donationProjects', [
       where('seasonId', '==', seasonId),
     ]);
@@ -119,7 +140,7 @@ export async function getProjectsBySeason(
 export async function getProject(
   projectId: string,
 ): Promise<DonationProject | null> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDoc<DonationProject>('donationProjects', projectId);
     if (r) return r;
   }
@@ -129,7 +150,7 @@ export async function getProject(
 // ---- Sponsor campaigns / special stages ----
 
 export async function getSponsorCampaigns(): Promise<SponsorCampaign[]> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDocs<SponsorCampaign>('sponsorCampaigns');
     if (r) return r;
   }
@@ -144,7 +165,7 @@ export async function getSponsorCampaignsByProject(
 }
 
 export async function getSpecialStages(): Promise<SpecialStage[]> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDocs<SpecialStage>('specialStages');
     if (r) return r;
   }
@@ -156,7 +177,7 @@ export async function getSpecialStages(): Promise<SpecialStage[]> {
 export async function getSeasonLeaderboard(
   seasonId: string,
 ): Promise<LeaderboardEntry[]> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDocs<LeaderboardEntry>(
       `leaderboards/${seasonId}/entries`,
       [orderBy('rank', 'asc')],
@@ -169,7 +190,7 @@ export async function getSeasonLeaderboard(
 export async function getProjectContributors(
   projectId: string,
 ): Promise<ProjectContributor[]> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDocs<ProjectContributor>(
       `projectLeaderboards/${projectId}/entries`,
       [orderBy('rank', 'asc')],
@@ -182,7 +203,7 @@ export async function getProjectContributors(
 // ---- Reports ----
 
 export async function getReports(): Promise<DonationReport[]> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDocs<DonationReport>('donationReports', [
       where('published', '==', true),
     ]);
@@ -194,7 +215,7 @@ export async function getReports(): Promise<DonationReport[]> {
 export async function getReport(
   reportId: string,
 ): Promise<DonationReport | null> {
-  if (useFirebase()) {
+  if (useFirestore()) {
     const r = await fbDoc<DonationReport>('donationReports', reportId);
     if (r) return r;
   }
