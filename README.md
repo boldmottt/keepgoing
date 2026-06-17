@@ -52,3 +52,14 @@ donationPoints = floor(gameScore * 0.1)
 > 실제 기부 내역은 시즌 종료 후 킵고잉 공식 홈페이지에 공개됩니다.
 
 자세한 명세는 [`docs/SPEC.md`](docs/SPEC.md)를 참고하세요.
+
+## 배포
+
+실제 Firebase 프로젝트로 배포하는 방법(프로젝트 생성·서비스 활성화, `.firebaserc`/환경변수 설정,
+`scripts/deploy.sh` 실행, 시드 데이터 주입, 관리자 지정, Unity 연동)은
+[`docs/DEPLOY.md`](docs/DEPLOY.md)를 참고하세요.
+
+```bash
+firebase use <project-id>     # .firebaserc 의 keepgoing-REPLACE_ME 대체
+bash scripts/deploy.sh        # functions/web 빌드 후 firebase deploy
+```
