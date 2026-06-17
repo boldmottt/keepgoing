@@ -53,6 +53,11 @@ export const ADMIN_FUNCTIONS = {
   upsertSpecialStage: 'upsertSpecialStage',
   createDonationReport: 'createDonationReport',
   closeSeasonAndDistribute: 'closeSeasonAndDistribute',
+  // 검수 (functions/src/review.ts)
+  listSuspiciousUsers: 'listSuspiciousUsers',
+  listRejectedRuns: 'listRejectedRuns',
+  setUserStatus: 'setUserStatus',
+  reviewRun: 'reviewRun',
 } as const;
 
 // ---------- 입력 타입 (functions/src/admin.ts 시그니처 기준) ----------
@@ -184,5 +189,57 @@ export function closeSeasonAndDistribute(seasonId: string) {
   return callFunction<CloseSeasonResult>(
     ADMIN_FUNCTIONS.closeSeasonAndDistribute,
     { seasonId },
+  );
+}
+
+// ---------- 검수 (functions/src/review.ts) ----------
+
+export type AdminUserStatus = 'active' | 'banned' | 'suspicious';
+
+export interface SuspiciousUser {
+  uid: string;
+  nickname: string;
+  status: AdminUserStatus;
+  fraudScore: number;
+  totalDonationPoints: number;
+  seasonDonationPoints: number;
+}
+
+export interface RejectedRun {
+  runId: string;
+  uid: string;
+  seasonId: string | null;
+  gameScore: number;
+  donationPoints: number;
+  rejectReason: string | null;
+  selectedProjectId: string | null;
+  createdAtMillis: number | null;
+}
+
+export function listSuspiciousUsers(limit?: number) {
+  return callFunction<{ users: SuspiciousUser[] }>(
+    ADMIN_FUNCTIONS.listSuspiciousUsers,
+    limit ? { limit } : {},
+  );
+}
+
+export function listRejectedRuns(limit?: number) {
+  return callFunction<{ runs: RejectedRun[] }>(
+    ADMIN_FUNCTIONS.listRejectedRuns,
+    limit ? { limit } : {},
+  );
+}
+
+export function setUserStatus(uid: string, status: AdminUserStatus) {
+  return callFunction<{ ok: boolean; uid: string; status: AdminUserStatus }>(
+    ADMIN_FUNCTIONS.setUserStatus,
+    { uid, status },
+  );
+}
+
+export function reviewRun(runId: string, action: 'confirm' | 'reject') {
+  return callFunction<{ ok: boolean; runId: string; changed: boolean; status: string }>(
+    ADMIN_FUNCTIONS.reviewRun,
+    { runId, action },
   );
 }
