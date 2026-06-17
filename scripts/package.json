@@ -1,0 +1,12 @@
+{
+  "name": "keepgoing-scripts",
+  "version": "1.0.0",
+  "description": "킵고잉 / KeepGoing 배포/운영 보조 스크립트 (관리자 클레임 부여 등)",
+  "private": true,
+  "scripts": {
+    "set-admin": "node set-admin-claim.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}
