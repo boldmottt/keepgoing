@@ -35,5 +35,13 @@ export {
   closeSeasonAndDistribute,
 } from "./admin";
 
+// 관리자 검수 (SPEC §17)
+export {
+  listSuspiciousUsers,
+  listRejectedRuns,
+  setUserStatus,
+  reviewRun,
+} from "./review";
+
 // 시드
 export { seedFirestore } from "./seed";
