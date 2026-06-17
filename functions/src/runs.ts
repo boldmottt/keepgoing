@@ -7,7 +7,28 @@ import { randomBytes, randomUUID } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, requireAuth } from "./common";
 import { DonationProject, FinishRunInput, User } from "./types";
-import { validateScore } from "./validation";
+import { decideFinishRun, FinishRunRejectReason } from "./runLogic";
+
+/** 가드 위반(throw) 사유를 기존과 동일한 HttpsError 로 변환한다. */
+function rejectReasonToHttpsError(reason: FinishRunRejectReason): HttpsError {
+  switch (reason) {
+    case "no_active_season":
+      return new HttpsError("failed-precondition", "진행 중인 시즌이 없습니다.");
+    case "duplicate_run":
+      return new HttpsError("already-exists", "이미 제출된 런입니다.");
+    case "user_banned":
+      return new HttpsError("permission-denied", "정지된 사용자입니다.");
+    case "project_not_found":
+      return new HttpsError("not-found", "존재하지 않는 프로젝트입니다.");
+    case "project_inactive":
+      return new HttpsError(
+        "failed-precondition",
+        "선택한 프로젝트가 활성 상태가 아닙니다."
+      );
+    default:
+      return new HttpsError("failed-precondition", "처리할 수 없는 요청입니다.");
+  }
+}
 
 /**
  * startRun({ clientVersion }) → { runId, serverSeed, startedAt }
@@ -66,62 +87,76 @@ export const finishRun = onCall(async (req) => {
   }
 
   return db.runTransaction(async (tx) => {
-    // 1. active season 확인
+    // --- 읽기 단계: 결정에 필요한 문서들을 읽는다 ---
+    // 1. active season
     const seasonQuery = await tx.get(
       db.collection("seasons").where("status", "==", "active").limit(1)
     );
-    if (seasonQuery.empty) {
-      throw new HttpsError("failed-precondition", "진행 중인 시즌이 없습니다.");
-    }
-    const seasonDoc = seasonQuery.docs[0];
-    const seasonId = seasonDoc.id;
+    const hasActiveSeason = !seasonQuery.empty;
+    const seasonDoc = hasActiveSeason ? seasonQuery.docs[0] : null;
+    const seasonId = seasonDoc ? seasonDoc.id : null;
 
-    // 5(선): runId 멱등성 확인 - 중복 제출 거부
+    // runId 멱등성
     const runRef = db.collection("runs").doc(input.runId);
     const existingRun = await tx.get(runRef);
-    if (existingRun.exists) {
-      throw new HttpsError("already-exists", "이미 제출된 런입니다.");
-    }
 
-    // 2. user status 확인
+    // user status
     const userRef = db.collection("users").doc(uid);
     const userSnap = await tx.get(userRef);
     const user = userSnap.exists ? (userSnap.data() as User) : null;
-    if (user?.status === "banned") {
-      throw new HttpsError("permission-denied", "정지된 사용자입니다.");
-    }
 
-    // 3. selectedProject active 확인
+    // selectedProject
     const projectRef = db
       .collection("donationProjects")
       .doc(input.selectedProjectId);
     const projectSnap = await tx.get(projectRef);
-    if (!projectSnap.exists) {
-      throw new HttpsError("not-found", "존재하지 않는 프로젝트입니다.");
-    }
-    const project = projectSnap.data() as DonationProject;
-    if (project.status !== "active" || project.seasonId !== seasonId) {
-      throw new HttpsError(
-        "failed-precondition",
-        "선택한 프로젝트가 활성 상태가 아닙니다."
-      );
-    }
+    const project = projectSnap.exists
+      ? (projectSnap.data() as DonationProject)
+      : null;
 
-    // 4. 점수 기본 검증
-    const validation = validateScore({
-      durationSec: input.durationSec,
-      distanceMeters: input.distanceMeters,
-      gameScore: input.gameScore,
-      donationPoints: input.donationPoints,
+    // 이 유저의 해당 프로젝트 첫 기여 여부 (participantCount 증가 판단).
+    // 트랜잭션 일관성을 위해 읽기 단계에서 함께 조회한다.
+    const priorProjectLedger = await tx.get(
+      db
+        .collection("donationPointLedger")
+        .where("uid", "==", uid)
+        .where("projectId", "==", input.selectedProjectId)
+        .where("status", "==", "confirmed")
+        .limit(1)
+    );
+
+    // --- 순수 결정 ---
+    const decision = decideFinishRun({
+      hasActiveSeason,
+      seasonId,
+      runExists: existingRun.exists,
+      userStatus: user?.status ?? null,
+      userExists: userSnap.exists,
+      projectExists: projectSnap.exists,
+      projectStatus: project?.status ?? null,
+      projectSeasonId: project?.seasonId ?? null,
+      hasPriorProjectContribution: !priorProjectLedger.empty,
+      score: {
+        durationSec: input.durationSec,
+        distanceMeters: input.distanceMeters,
+        gameScore: input.gameScore,
+        donationPoints: input.donationPoints,
+      },
+      specialStageEntered: !!input.specialStageEntered,
     });
+
+    // 가드 위반: 기존과 동일한 HttpsError 로 던진다.
+    if (decision.kind === "throw" && decision.rejectReason) {
+      throw rejectReasonToHttpsError(decision.rejectReason);
+    }
 
     const now = Timestamp.now();
 
     // 검증 실패: rejected 로 저장하고 집계 미반영
-    if (!validation.ok) {
+    if (decision.kind === "persist_rejected") {
       tx.set(runRef, {
         uid,
-        seasonId,
+        seasonId: seasonId!,
         startedAt: now,
         endedAt: now,
         durationSec: input.durationSec ?? 0,
@@ -144,16 +179,21 @@ export const finishRun = onCall(async (req) => {
         runId: input.runId,
         validationStatus: "rejected",
         rejectReason: "invalid_score",
-        detail: validation.reason,
+        detail: decision.detail,
       };
     }
 
-    const points = input.donationPoints;
+    // 여기부터는 accept(confirmed). 위 가드를 모두 통과했으므로
+    // seasonDoc/seasonId 및 집계 델타가 항상 존재한다.
+    const deltas = decision.deltas!;
+    const points = deltas.points;
+    const activeSeasonDoc = seasonDoc!;
+    const activeSeasonId = seasonId!;
 
     // 5. runs 저장 (confirmed)
     tx.set(runRef, {
       uid,
-      seasonId,
+      seasonId: activeSeasonId,
       startedAt: now,
       endedAt: now,
       durationSec: input.durationSec,
@@ -177,25 +217,24 @@ export const finishRun = onCall(async (req) => {
     tx.set(ledgerRef, {
       uid,
       runId: input.runId,
-      seasonId,
+      seasonId: activeSeasonId,
       projectId: input.selectedProjectId,
-      points,
-      source: input.specialStageEntered ? "special_stage" : "normal_run",
-      status: "confirmed",
+      points: deltas.ledger.points,
+      source: deltas.ledger.source,
+      status: deltas.ledger.status,
       createdAt: now,
       confirmedAt: now,
     });
 
     // 7. 유저 포인트 증가 (없으면 생성)
-    const isNewParticipant = !userSnap.exists;
     tx.set(
       userRef,
       {
-        totalDonationPoints: FieldValue.increment(points),
-        seasonDonationPoints: FieldValue.increment(points),
+        totalDonationPoints: FieldValue.increment(deltas.userTotalDonationPointsInc),
+        seasonDonationPoints: FieldValue.increment(deltas.userSeasonDonationPointsInc),
         status: user?.status ?? "active",
         lastLoginAt: now,
-        ...(isNewParticipant
+        ...(deltas.isNewParticipant
           ? { createdAt: now, nickname: user?.nickname ?? "", avatarId: user?.avatarId ?? "0" }
           : {}),
       },
@@ -204,21 +243,12 @@ export const finishRun = onCall(async (req) => {
 
     // 8. 프로젝트 포인트/참여자 증가
     //    이 유저가 해당 프로젝트에 처음 기여하는 경우에만 participantCount 증가.
-    const priorProjectLedger = await tx.get(
-      db
-        .collection("donationPointLedger")
-        .where("uid", "==", uid)
-        .where("projectId", "==", input.selectedProjectId)
-        .where("status", "==", "confirmed")
-        .limit(1)
-    );
-    const isNewProjectParticipant = priorProjectLedger.empty;
     tx.set(
       projectRef,
       {
-        confirmedPoints: FieldValue.increment(points),
-        ...(isNewProjectParticipant
-          ? { participantCount: FieldValue.increment(1) }
+        confirmedPoints: FieldValue.increment(deltas.projectConfirmedPointsInc),
+        ...(deltas.projectParticipantCountInc > 0
+          ? { participantCount: FieldValue.increment(deltas.projectParticipantCountInc) }
           : {}),
       },
       { merge: true }
@@ -226,8 +256,8 @@ export const finishRun = onCall(async (req) => {
 
     // 9. 시즌 전체 포인트 증가
     tx.set(
-      seasonDoc.ref,
-      { totalConfirmedPoints: FieldValue.increment(points) },
+      activeSeasonDoc.ref,
+      { totalConfirmedPoints: FieldValue.increment(deltas.seasonTotalConfirmedPointsInc) },
       { merge: true }
     );
 
@@ -237,7 +267,7 @@ export const finishRun = onCall(async (req) => {
 
     const seasonLbRef = db
       .collection("leaderboards")
-      .doc(seasonId)
+      .doc(activeSeasonId)
       .collection("entries")
       .doc(uid);
     tx.set(
@@ -273,7 +303,7 @@ export const finishRun = onCall(async (req) => {
       runId: input.runId,
       validationStatus: "confirmed",
       donationPoints: points,
-      seasonId,
+      seasonId: activeSeasonId,
       projectId: input.selectedProjectId,
     };
   });
