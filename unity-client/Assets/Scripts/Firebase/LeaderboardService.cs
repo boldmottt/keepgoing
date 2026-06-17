@@ -25,6 +25,7 @@ namespace KeepGoing.Firebase
     {
         Task<List<LeaderboardEntry>> GetSeasonLeaderboardAsync(string seasonId, int top = 50);
         Task<List<LeaderboardEntry>> GetProjectLeaderboardAsync(string projectId, int top = 50);
+        Task<List<LeaderboardEntry>> GetDailyLeaderboardAsync(string seasonId, int top = 50);
     }
 
     /// <summary>로컬 목 리더보드. 더미 데이터를 점수 내림차순으로 반환한다.</summary>
@@ -49,6 +50,13 @@ namespace KeepGoing.Firebase
         {
             var filtered = _entries.Where(e => e.mainProjectId == projectId);
             var ranked = RankCopy(filtered).Take(top).ToList();
+            return Task.FromResult(ranked);
+        }
+
+        public Task<List<LeaderboardEntry>> GetDailyLeaderboardAsync(string seasonId, int top = 50)
+        {
+            // 목: 오늘의 리더보드를 시즌 전체 더미로 근사한다(오프라인/에디터용).
+            var ranked = RankCopy(_entries).Take(top).ToList();
             return Task.FromResult(ranked);
         }
 

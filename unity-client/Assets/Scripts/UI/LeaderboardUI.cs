@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 using KeepGoing.Core;
@@ -22,25 +23,48 @@ namespace KeepGoing.UI
         [Header("버튼")]
         public Button closeButton;
 
+        [Header("탭 (시즌 / 오늘)")]
+        public Button seasonTabButton;
+        public Button dailyTabButton;
+
         [Header("설정")]
         public string seasonId = "beta-season-1";
 
+        /// <summary>리더보드 표시 모드.</summary>
+        public enum Mode { Season, Daily }
+
         private readonly List<LeaderboardRowUI> _rows = new List<LeaderboardRowUI>();
+        private Mode _mode = Mode.Season;
 
         private void Start()
         {
             if (closeButton != null) closeButton.onClick.AddListener(Hide);
+            if (seasonTabButton != null) seasonTabButton.onClick.AddListener(() => SwitchMode(Mode.Season));
+            if (dailyTabButton != null) dailyTabButton.onClick.AddListener(() => SwitchMode(Mode.Daily));
             if (panel != null) panel.SetActive(false);
         }
 
         public async void Show()
         {
             if (panel != null) panel.SetActive(true);
+            await Load();
+        }
 
+        /// <summary>탭 전환 시 호출. 모드를 바꾸고 다시 로드한다.</summary>
+        private async void SwitchMode(Mode mode)
+        {
+            _mode = mode;
+            await Load();
+        }
+
+        private async Task Load()
+        {
             var gm = GameManager.Instance;
             if (gm == null || gm.Leaderboard == null) return;
 
-            var entries = await gm.Leaderboard.GetSeasonLeaderboardAsync(seasonId, 50);
+            var entries = _mode == Mode.Daily
+                ? await gm.Leaderboard.GetDailyLeaderboardAsync(seasonId, 50)
+                : await gm.Leaderboard.GetSeasonLeaderboardAsync(seasonId, 50);
             Render(entries);
         }
 
