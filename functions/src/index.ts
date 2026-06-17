@@ -20,6 +20,7 @@ export { startRun, finishRun } from "./runs";
 
 // 리더보드
 export { getSeasonLeaderboard, getProjectLeaderboard } from "./leaderboards";
+export { getDailyLeaderboard } from "./daily";
 
 // 관리자
 export {

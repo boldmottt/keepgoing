@@ -9,7 +9,7 @@ import { db } from "./common";
 const TOP_LIMIT = 100;
 
 /** 제외 대상 유저(suspicious/banned)의 uid 집합을 만든다. */
-async function getExcludedUids(): Promise<Set<string>> {
+export async function getExcludedUids(): Promise<Set<string>> {
   const excluded = new Set<string>();
   const snaps = await Promise.all([
     db.collection("users").where("status", "==", "banned").get(),
