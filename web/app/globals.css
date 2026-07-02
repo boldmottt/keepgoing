@@ -178,6 +178,15 @@ a:hover {
   font-weight: 600;
   color: #5d3d1c;
 }
+.hero-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 20px !important;
+}
+.hero-actions .btn:hover {
+  text-decoration: none;
+}
 
 /* Cards */
 .card {
