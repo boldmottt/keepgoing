@@ -89,7 +89,11 @@ function reset(){
     obstacles:[], spawnT:0, portalDone:false, t:0, anim:0, result:null, last:performance.now(),
     scenery:makeScenery(), sky1:makeSkyline(1,0,30,70), sky2:makeSkyline(2,0,55,110),
     clouds:[{x:60,y:60,s:1,v:5},{x:250,y:40,s:.7,v:8},{x:330,y:95,s:.85,v:6},{x:150,y:120,s:.55,v:10}],
-    parts:[], pops:[], flash:0, shake:0, landT:0,
+    parts:[], pops:[], flash:0, shake:0, landT:0, scorePulse:0, lastLive:0,
+    leaves:Array.from({length:6},()=>({x:Math.random()*W,y:Math.random()*H*0.7,
+      vx:12+Math.random()*20,vy:9+Math.random()*14,rot:Math.random()*7,
+      c:Math.random()<.5?'#8fc97a':'#f0a35e'})),
+    birds:[{x:-30,y:118,v:15},{x:170,y:86,v:11}],
   };
 }
 reset();
@@ -157,6 +161,12 @@ function gameOver(){
   const valid = donationPoints===floor(gameScore*0.1) && distanceMeters<=durationSec*30 && gameScore<=durationSec*30*5+5000 && donationPoints<=100000;
   S.result={distanceMeters,gameScore,donationPoints,valid,durationSec};
   S.mode='over'; S.shake=1;
+  if(valid){ // 컨페티
+    const cols=['rgba(255,107,87,','rgba(126,217,154,','rgba(255,201,60,','rgba(169,205,244,','rgba(255,143,171,'];
+    for(let i=0;i<46;i++) S.parts.push({x:60+Math.random()*280,y:150+Math.random()*40,
+      vx:(Math.random()-.5)*180,vy:-60-Math.random()*170,r:3+Math.random()*3.5,
+      life:1+Math.random()*.9,c:cols[i%5]});
+  }
 }
 
 // ================= 업데이트 =================
@@ -175,6 +185,10 @@ function update(dt){
   for(const b of S.scenery){ b.z -= v*dt*2.2; if(b.z<-140){ b.z += Z_SPAWN+160;
     b.w=70+Math.random()*60; b.h=130+Math.random()*150; b.c=BLDG[(Math.random()*BLDG.length)|0]; } }
   for(const c of S.clouds){ c.x += c.v*dt; if(c.x>W+60) c.x=-60; }
+  for(const l of S.leaves){ l.x+=l.vx*dt; l.y+=l.vy*dt; l.rot+=dt*3;
+    if(l.x>W+16||l.y>H+16){ l.x=-12; l.y=Math.random()*H*0.5; } }
+  for(const b of S.birds){ b.x+=b.v*dt; if(b.x>W+40){ b.x=-40; b.y=60+Math.random()*90; } }
+  if(S.scorePulse>0) S.scorePulse=Math.max(0,S.scorePulse-dt*3);
   if(cruising && !S.jumping && S.sliding<=0 && Math.random()<dt*9) puff(S.px+(Math.random()-.5)*10, PLAYER_Y+8, 1);
 
   if(S.mode==='special'){ S.t+=dt; updateSpecial(dt); return; }
@@ -254,6 +268,13 @@ function drawSky(sunset){
     ctx.restore();
   }
   function blob(ox,oy){ ctx.beginPath(); ctx.arc(ox-18,oy+4,11,0,7); ctx.arc(ox,oy,16,0,7); ctx.arc(ox+19,oy+5,12,0,7); ctx.fill(); }
+  // 새
+  ctx.strokeStyle='rgba(74,47,22,.55)'; ctx.lineWidth=2; ctx.lineCap='round';
+  for(const b of S.birds){
+    const f=Math.sin(S.anim*10+b.x)*2;
+    ctx.beginPath(); ctx.moveTo(b.x-7,b.y); ctx.quadraticCurveTo(b.x-3.5,b.y-4-f,b.x,b.y);
+    ctx.quadraticCurveTo(b.x+3.5,b.y-4-f,b.x+7,b.y); ctx.stroke();
+  }
   // 스카이라인 2겹
   skyline(S.sky2, HORIZON+2, sunset?'#e8a06c':'#cfe2f4');
   skyline(S.sky1, HORIZON+2, sunset?'#c97f52':'#aec9e8');
@@ -303,6 +324,30 @@ function drawGroundRoad(sunset){
       ctx.moveTo(x0-hw0,p0.y); ctx.lineTo(x0+hw0,p0.y); ctx.lineTo(x1+hw1,p1.y); ctx.lineTo(x1-hw1,p1.y);
       ctx.closePath(); ctx.fill();
     }
+  }
+  // 횡단보도 (z-공간 스크롤)
+  const CROSS=1500, coff=(S.distance*2.2)%CROSS;
+  for(let z=700-coff; z<Z_SPAWN; z+=CROSS){
+    if(z<10) continue;
+    const p0=proj(z), p1=proj(z+95);
+    for(let k=0;k<5;k++){
+      const xf=-0.72+k*0.36;
+      const x0=CX+xf*ROAD_HALF*p0.s, x1=CX+xf*ROAD_HALF*p1.s;
+      const w0=21*p0.s, w1=21*p1.s;
+      ctx.fillStyle='rgba(255,246,215,.5)';
+      ctx.beginPath(); ctx.moveTo(x0-w0,p0.y); ctx.lineTo(x0+w0,p0.y);
+      ctx.lineTo(x1+w1,p1.y); ctx.lineTo(x1-w1,p1.y); ctx.closePath(); ctx.fill();
+    }
+  }
+  // 인도 이음선 (속도감)
+  const SEAM=430, soff=(S.distance*2.2)%SEAM;
+  ctx.strokeStyle='rgba(74,47,22,.10)'; ctx.lineWidth=2;
+  for(let z=-soff+SEAM; z<Z_SPAWN; z+=SEAM){
+    const p=proj(Math.max(2,z));
+    ctx.beginPath();
+    ctx.moveTo(0,p.y); ctx.lineTo(CX-(ROAD_HALF+12)*p.s,p.y);
+    ctx.moveTo(CX+(ROAD_HALF+12)*p.s,p.y); ctx.lineTo(W,p.y);
+    ctx.stroke();
   }
 }
 function drawScenery(sunset){
@@ -377,6 +422,13 @@ function drawObstacle(o){
     ctx.beginPath(); ctx.arc(0,0,r*0.62,0,4.4); ctx.stroke();
     ctx.beginPath(); ctx.arc(0,0,r*0.34,2.6,6.6); ctx.stroke();
     ctx.restore();
+    // 궤도 별
+    for(let i=0;i<3;i++){
+      const a=S.anim*2.2+i*2.09;
+      const ox=x+Math.cos(a)*r*1.3, oy=y-40*s+Math.sin(a)*r*0.62;
+      ctx.save(); ctx.translate(ox,oy); ctx.rotate(a); starPath(Math.max(3,5*s+2));
+      ctx.fillStyle='#ffe9a1'; ctx.fill(); ctx.restore();
+    }
     if(s>0.3) chunky('후원 스테이지', x, y-40*s-r-8*s, Math.max(10,13*s+4), '#fff', '#a95ded');
     return;
   }
@@ -404,6 +456,9 @@ function drawObstacle(o){
     rr(x-36*s,y-28*s,72*s,22*s,7*s); ctx.fillStyle=g; ctx.fill(); ctx.stroke();
     ctx.fillStyle='rgba(255,255,255,.65)';
     for(let i=0;i<4;i++) rr(x-30*s+i*17*s, y-23*s, 10*s, 12*s, 3*s), ctx.fill();
+    // 스캘럽 트림
+    ctx.fillStyle='#f7b32b';
+    for(let i=0;i<5;i++){ ctx.beginPath(); ctx.arc(x-28*s+i*14*s, y-6*s, 6*s, 0, Math.PI); ctx.fill(); }
   }
   if(o.type==='low'){ // 걸린 현수막 → 슬라이드
     ctx.lineWidth=Math.max(1.4,3*s);
@@ -482,7 +537,7 @@ function drawCat(){
   const K=1.22;
   ctx.scale(K,K);
   const tilt=(laneX(S.lane,1)-S.px)*0.0045;
-  ctx.rotate(tilt);
+  ctx.rotate(tilt + Math.sin(S.anim*13)*0.02);
   if(sliding){ ctx.translate(0,18); ctx.scale(1.3,0.58); }
   if(jumping) ctx.scale(0.93,1.12);
   if(land){ ctx.scale(1+0.12*land, 1-0.12*land); }
@@ -495,6 +550,19 @@ function drawCat(){
   ctx.lineWidth=10; ctx.strokeStyle=CAT.stripe; ctx.setLineDash([5,7]); ctx.stroke(); ctx.setLineDash([]);
   ctx.lineWidth=3.2; ctx.strokeStyle=INK;
   ctx.beginPath(); ctx.moveTo(15,-16); ctx.quadraticCurveTo(38,-24+wag*10, 33,-46+wag*9); ctx.stroke();
+
+  // 스카프 자락 (몸 뒤에서 나부낌)
+  const fl=Math.sin(S.anim*11)*5, fl2=Math.cos(S.anim*9)*4;
+  ctx.lineWidth=3; ctx.strokeStyle=INK;
+  ctx.beginPath(); ctx.moveTo(5,-31);
+  ctx.quadraticCurveTo(22+fl,-20, 28+fl,-7+fl2);
+  ctx.quadraticCurveTo(15,-13, 6,-21); ctx.closePath();
+  ctx.fillStyle='#ff5d5d'; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(2,-31);
+  ctx.quadraticCurveTo(17+fl2,-25, 21+fl2,-13);
+  ctx.quadraticCurveTo(10,-17, 2,-25); ctx.closePath();
+  ctx.fillStyle='#e84b4b'; ctx.fill(); ctx.stroke();
+  ctx.lineWidth=3.6;
 
   // 몸통 (그라데이션)
   const bg=ctx.createLinearGradient(0,-28,0,0); bg.addColorStop(0,CAT.lite); bg.addColorStop(1,CAT.body);
@@ -552,11 +620,22 @@ function drawCat(){
   for(const sd of [-1,1]) for(const dy of [-1,3]){
     ctx.beginPath(); ctx.moveTo(sd*13.6,hy+5+dy); ctx.quadraticCurveTo(sd*20,hy+4+dy, sd*24,hy+2.4+dy*1.7); ctx.stroke();
   }
+  // 스카프 목 밴드 + 매듭 (턱 아래, 얼굴 위에 겹침)
+  ctx.lineWidth=3.2; ctx.strokeStyle=INK;
+  rr(-15,hy+18,30,9.5,4.8); ctx.fillStyle='#ff5d5d'; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(9,hy+23,4.6,0,7); ctx.fillStyle='#e84b4b'; ctx.fill(); ctx.stroke();
   ctx.restore();
 }
 
 // ================= 파티클/팝업 렌더 =================
 function drawParts(){
+  // 앰비언트 낙엽
+  for(const l of S.leaves){
+    ctx.save(); ctx.translate(l.x,l.y); ctx.rotate(l.rot);
+    ctx.globalAlpha=.75; ctx.fillStyle=l.c;
+    ctx.beginPath(); ctx.ellipse(0,0,5,2.6,0,0,7); ctx.fill();
+    ctx.restore(); ctx.globalAlpha=1;
+  }
   for(const p of S.parts){
     ctx.fillStyle=p.c + (p.life*1.6) + ')';
     ctx.beginPath(); ctx.arc(p.x,p.y,p.r*Math.min(1,p.life*2.4),0,7); ctx.fill();
@@ -588,8 +667,11 @@ function vignette(){
 function hud(){
   const distanceMeters=floor(S.distance/20);
   const live=distanceMeters + S.dodged*10 + S.comboBonus + S.nearMiss + S.specialScore;
+  if(live-S.lastLive>=100) S.scorePulse=1;
+  S.lastLive=live;
   plate(10,10,192,60,16);
-  ctx.textAlign='left'; ctx.font='900 22px sans-serif';
+  const fs=22*(1+S.scorePulse*0.16);
+  ctx.textAlign='left'; ctx.font=`900 ${fs}px sans-serif`;
   ctx.lineWidth=5; ctx.lineJoin='round'; ctx.strokeStyle='#fff';
   ctx.strokeText(`${live.toLocaleString()}점`, 24, 36);
   ctx.fillStyle=INK; ctx.fillText(`${live.toLocaleString()}점`, 24, 36);
@@ -621,9 +703,24 @@ function render(){
 
   if(S.mode==='title'){
     ctx.fillStyle='rgba(74,47,22,.20)'; ctx.fillRect(-10,-10,W+20,H+20);
+    // 회전 방사광선
+    ctx.save(); ctx.translate(CX,280); ctx.rotate(S.anim*0.18);
+    ctx.fillStyle='rgba(255,236,170,.4)';
+    for(let i=0;i<12;i++){ ctx.rotate(Math.PI/6);
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,330,-0.085,0.085); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
     // 로고 카드
     plate(36,128,328,352,28);
     logoText('킵고잉', CX, 236, 60);
+    ctx.font='30px sans-serif'; ctx.textAlign='center'; ctx.fillText('🧀', CX-122, 244);
+    // 반짝임
+    for(let i=0;i<3;i++){
+      const tw=Math.sin(S.anim*3+i*2.1)*0.5+0.5;
+      const pos=[[CX-96,180],[CX+106,196],[CX+82,158]][i];
+      ctx.save(); ctx.globalAlpha=tw; ctx.translate(pos[0],pos[1]); ctx.rotate(S.anim+i);
+      starPath(6.5); ctx.fillStyle='#fff'; ctx.fill(); ctx.restore();
+    }
+    ctx.globalAlpha=1;
     chunky('KeepGoing', CX, 272, 20, '#7ed99a', '#fff');
     ctx.font='700 14px sans-serif'; ctx.fillStyle='#8a6a45'; ctx.textAlign='center';
     ctx.fillText('광고를 보지 않아도 되는 광고 게임', CX, 300);
