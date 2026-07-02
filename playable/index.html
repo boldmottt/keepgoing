@@ -5,49 +5,63 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>킵고잉 / KeepGoing — 플레이</title>
 <style>
-  :root { --green:#16a34a; --ink:#0f172a; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { margin:0; height:100%; background:#0b1220; color:#e2e8f0;
+  html,body { margin:0; height:100%; background:#fdeec9; color:#5b3a1e;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
-  #wrap { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:12px; }
-  canvas { background:linear-gradient(#1e293b,#0f172a); border-radius:16px; touch-action:none;
-    box-shadow:0 10px 40px rgba(0,0,0,.5); max-width:100%; height:auto; }
-  .hint { font-size:13px; color:#94a3b8; text-align:center; line-height:1.6; }
-  .hint b { color:#e2e8f0; }
-  h1 { font-size:18px; margin:4px 0; }
-  .tag { color:var(--green); font-weight:700; }
+  #wrap { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:12px;
+    background:
+      radial-gradient(circle at 20% 10%, #fff7e0 0 8%, transparent 9%),
+      radial-gradient(circle at 80% 30%, #fff7e0 0 6%, transparent 7%),
+      linear-gradient(#ffe9b8,#fdd98f); }
+  canvas { border-radius:22px; touch-action:none; border:5px solid #5b3a1e;
+    box-shadow:0 10px 0 #c99b56, 0 18px 34px rgba(91,58,30,.35); max-width:100%; height:auto; background:#bfe6ff; }
+  .hint { font-size:13px; color:#7c5a35; text-align:center; line-height:1.7; font-weight:600; }
+  .hint b { color:#5b3a1e; background:#fff4d8; border:2px solid #e8c583; border-radius:8px; padding:0 6px; }
+  h1 { font-size:22px; margin:2px 0; color:#5b3a1e; text-shadow:0 2px 0 #fff4d8; letter-spacing:1px; }
+  h1 .tag { color:#2e9e57; }
 </style>
 </head>
 <body>
 <div id="wrap">
-  <h1>🏃 킵고잉 <span class="tag">KeepGoing</span></h1>
+  <h1>🧀🐱 킵고잉 <span class="tag">KeepGoing</span></h1>
   <canvas id="c" width="400" height="640"></canvas>
   <div class="hint">
     <b>← →</b> 레인 이동 · <b>↑</b> 점프 · <b>↓</b> 슬라이드 · (모바일: 스와이프) · <b>Space</b> 시작/재시작<br/>
-    빨간 <b>세로 광고판</b>=옆 레인으로 · 노랑 <b>현수막(위)</b>=점프 · 파랑 <b>현수막(아래)</b>=슬라이드 · 🌀 <b>포털</b>=특별 수집 스테이지
+    🟥 <b>광고판</b>=옆 레인으로 · 🟨 <b>낮은 현수막</b>=점프 · 🟦 <b>걸린 현수막</b>=슬라이드 · 🌀 <b>포털</b>=특별 수집 스테이지
   </div>
 </div>
 <script>
-const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const cv = document.getElementById('c'), ctx = ctx0 = cv.getContext('2d');
 const W = cv.width, H = cv.height;
 const LANES = [80, 200, 320];
 const GROUND = 520;
 
-// ---- 점수 공식 (SPEC §2/§8) ----
+// ---- 쿠키런풍 팔레트 ----
+const INK = '#5b3a1e';            // 두꺼운 갈색 아웃라인
+const CREAM = '#fff8e8';
+const CAT = { body:'#ffb63d', stripe:'#e8892a', muzzle:'#fff1d6', ear:'#ff8fab', cheek:'#ffb0a0' };
+const BLDG = ['#f5b6a5','#a8d8a5','#a5c8f2','#f4d78d','#d7b7ec','#9fdcd6'];
+
+// ---- 점수 공식 (SPEC §2/§8) — 로직 불변 ----
 function comboBonusFor(c){ if(c>0 && c%10===0){ if(c>=30)return 500; if(c>=20)return 250; return 100; } return 0; }
 const floor = Math.floor;
 
-let S; // state
+let S;
 function reset(){
   S = {
     mode:'title', lane:1, py:GROUND, vy:0, jumping:false, sliding:0,
     speed:230, distance:0, dodged:0, combo:0, maxCombo:0, comboBonus:0, nearMiss:0,
-    specialScore:0, special:null, specialEntered:false, collected:{coin:0,big:0,heart:0,gold:0},
-    obstacles:[], spawnT:0, portalDone:false, t:0, result:null, last:performance.now()
+    specialScore:0, special:null, collected:{coin:0,big:0,heart:0,gold:0},
+    obstacles:[], spawnT:0, portalDone:false, t:0, anim:0, result:null, last:performance.now(),
+    bl:makeBuildings(), br:makeBuildings()
   };
 }
+function makeBuildings(){
+  const arr=[]; let y=-80;
+  while(y<H+160){ const h=50+Math.random()*70; arr.push({y,h,c:BLDG[(Math.random()*BLDG.length)|0],win:Math.random()<.8}); y+=h+8; }
+  return arr;
+}
 reset();
-
 function start(){ reset(); S.mode='play'; }
 
 // ---- 입력 ----
@@ -76,34 +90,23 @@ cv.addEventListener('mousedown',()=>{ if(S.mode!=='play'&&S.mode!=='special') st
 // ---- 스폰 ----
 const OBS=['block','high','low'];
 function spawn(){
-  if(!S.portalDone && S.distance>260){ // 브랜드 포털
-    S.portalDone=true;
-    S.obstacles.push({type:'portal', lane:(Math.random()*3|0), y:-60});
-    return;
-  }
-  const type=OBS[(Math.random()*OBS.length)|0];
-  S.obstacles.push({type, lane:(Math.random()*3|0), y:-60, scored:false});
+  if(!S.portalDone && S.distance>260){ S.portalDone=true;
+    S.obstacles.push({type:'portal', lane:(Math.random()*3|0), y:-60}); return; }
+  S.obstacles.push({type:OBS[(Math.random()*OBS.length)|0], lane:(Math.random()*3|0), y:-60, scored:false});
 }
 
 // ---- 특별 스테이지 ----
-function enterSpecial(){
-  S.mode='special';
-  S.special={ time:15, drops:[], spawnT:0, combo:0 };
-}
+function enterSpecial(){ S.mode='special'; S.special={ time:15, drops:[], spawnT:0, combo:0 }; }
 function updateSpecial(dt){
   const sp=S.special; sp.time-=dt; sp.spawnT-=dt;
   if(sp.spawnT<=0){ sp.spawnT=0.45;
     const r=Math.random(); const kind = r<0.5?'coin': r<0.7?'big': r<0.85?'heart':'gold';
-    sp.drops.push({kind, lane:(Math.random()*3|0), y:-40});
-  }
+    sp.drops.push({kind, lane:(Math.random()*3|0), y:-40}); }
   const PTS={coin:20,big:100,heart:150,gold:500};
-  for(const d of sp.drops){ d.y += (260+ (15-sp.time)*10)*dt;
+  for(const d of sp.drops){ d.y += (260+(15-sp.time)*10)*dt;
     if(!d.got && d.y>GROUND-30 && d.y<GROUND+40 && d.lane===S.lane){
-      d.got=true; sp.combo++; const add=PTS[d.kind];
-      S.specialScore+=add; S.specialScore += sp.combo%5===0?50:0;
-      const key={coin:'coin',big:'big',heart:'heart',gold:'gold'}[d.kind]; S.collected[key]++;
-    }
-  }
+      d.got=true; sp.combo++; S.specialScore+=PTS[d.kind]; S.specialScore += sp.combo%5===0?50:0;
+      S.collected[d.kind]++; } }
   sp.drops=sp.drops.filter(d=>d.y<H+40 && !d.got);
   if(sp.time<=0){ S.mode='play'; S.special=null; S.obstacles=[]; S.spawnT=0.8; }
 }
@@ -121,28 +124,24 @@ function gameOver(){
 
 // ---- 업데이트 ----
 function update(dt){
-  if(S.mode==='special'){ updateSpecial(dt); return; }
-  if(S.mode!=='play') return;
+  S.anim+=dt;
+  if(S.mode==='special'){ updateSpecial(dt); scrollCity(dt,300); return; }
+  if(S.mode!=='play'){ scrollCity(dt,40); return; }
   S.t+=dt;
   S.speed=Math.min(560,S.speed+dt*16);
-  S.distance+=S.speed*dt/ (1); // px
-  // 점프 물리
+  S.distance+=S.speed*dt;
+  scrollCity(dt,S.speed);
   if(S.jumping){ S.vy+=1500*dt; S.py+=S.vy*dt; if(S.py>=GROUND){S.py=GROUND;S.jumping=false;S.vy=0;} }
   if(S.sliding>0) S.sliding-=dt;
-  // 스폰
   S.spawnT-=dt; if(S.spawnT<=0){ S.spawnT=Math.max(0.55, 1.1 - S.speed/900); spawn(); }
-  // 장애물 이동 + 충돌
   for(const o of S.obstacles){
     o.y += S.speed*dt;
     const atPlayer = o.y>GROUND-34 && o.y<GROUND+24;
     if(atPlayer && o.lane===S.lane && !o.hit){
       if(o.type==='portal'){ o.hit=true; enterSpecial(); return; }
-      const avoided = (o.type==='high'&&!S.jumping&&S.py>=GROUND-2&&false) // high=현수막 위 → 점프로 피함
-        ;
       let ok=false;
-      if(o.type==='block') ok=false;            // 다른 레인으로 갔어야 함
-      else if(o.type==='high') ok=S.jumping;     // 위 현수막 → 점프
-      else if(o.type==='low') ok=S.sliding>0;    // 아래 현수막 → 슬라이드
+      if(o.type==='high') ok=S.jumping;
+      else if(o.type==='low') ok=S.sliding>0;
       if(!ok){ o.hit=true; gameOver(); return; }
     }
     if(!o.scored && o.y>GROUND+24 && o.type!=='portal'){
@@ -153,82 +152,247 @@ function update(dt){
   }
   S.obstacles=S.obstacles.filter(o=>o.y<H+60 && !o.hit);
 }
+function scrollCity(dt,v){
+  for(const side of [S.bl,S.br]){
+    for(const b of side) b.y += v*dt*0.35;
+    while(side.length && side[0].y>H+20){ side.shift(); }
+    let top = side.length ? side[0].y : 40;
+    while(top>-140){ const h=50+Math.random()*70; top-=h+8;
+      side.unshift({y:top,h,c:BLDG[(Math.random()*BLDG.length)|0],win:Math.random()<.8}); }
+  }
+}
 
-// ---- 렌더 ----
-function laneX(l){return LANES[l];}
-function drawPlayer(){
-  const x=laneX(S.lane); const sliding=S.sliding>0;
-  const h=sliding?22:46, y=S.py-(sliding?0:0);
-  ctx.fillStyle='#22d3ee';
-  ctx.fillRect(x-16, y-h, 32, h);
-  ctx.fillStyle='#0e7490'; ctx.fillRect(x-16, y-8, 32, 8);
+// ---- 그리기 헬퍼 ----
+function rr(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); }
+function panel(x,y,w,h,r,fill){ rr(x,y,w,h,r); ctx.fillStyle=fill||CREAM; ctx.fill(); ctx.lineWidth=4; ctx.strokeStyle=INK; ctx.stroke(); }
+function chunky(text,x,y,size,fill,stroke){
+  ctx.font=`900 ${size}px sans-serif`; ctx.textAlign='center';
+  ctx.lineJoin='round'; ctx.lineWidth=Math.max(4,size/5); ctx.strokeStyle=stroke||INK; ctx.strokeText(text,x,y);
+  ctx.fillStyle=fill||'#fff'; ctx.fillText(text,x,y);
 }
+
+// ---- 배경: 도시 ----
+function drawCity(sunset){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  if(sunset){ g.addColorStop(0,'#ffb36b'); g.addColorStop(.5,'#ffd98a'); g.addColorStop(1,'#ffe9b0'); }
+  else { g.addColorStop(0,'#8fd4f7'); g.addColorStop(.55,'#c8ecff'); g.addColorStop(1,'#e8f8ff'); }
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // 해 + 구름
+  ctx.fillStyle=sunset?'#ff8f5e':'#ffd94d'; ctx.beginPath(); ctx.arc(58,54,22,0,7); ctx.fill();
+  ctx.lineWidth=3; ctx.strokeStyle=INK; ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,.92)';
+  for(const [cx,cy] of [[300,60],[130,110],[340,150]]){
+    ctx.beginPath(); ctx.arc(cx,cy,14,0,7); ctx.arc(cx+16,cy+4,11,0,7); ctx.arc(cx-16,cy+5,10,0,7); ctx.fill();
+  }
+  // 좌우 빌딩 스트립
+  drawBuildings(S.bl, 4, 44);
+  drawBuildings(S.br, 352, 44);
+  // 도로
+  rr(46,-8,308,H+16,0); ctx.fillStyle='#8b7a67'; ctx.fill();
+  ctx.fillStyle='#7a6a58'; ctx.fillRect(46,0,8,H); ctx.fillRect(346,0,8,H);
+  // 차선 (점선 스크롤)
+  const off = (S.distance*0.9) % 56;
+  ctx.fillStyle='#fff3cf';
+  for(const x of [140,260]) for(let y=-56+off; y<H; y+=56) ctx.fillRect(x-4,y,8,30);
+  // 인도 경계
+  ctx.lineWidth=4; ctx.strokeStyle=INK;
+  ctx.beginPath(); ctx.moveTo(50,0); ctx.lineTo(50,H); ctx.moveTo(350,0); ctx.lineTo(350,H); ctx.stroke();
+}
+function drawBuildings(list,x,w){
+  for(const b of list){
+    rr(x,b.y,w,b.h,6); ctx.fillStyle=b.c; ctx.fill(); ctx.lineWidth=3; ctx.strokeStyle=INK; ctx.stroke();
+    if(b.win){ ctx.fillStyle='rgba(91,58,30,.28)';
+      for(let wy=b.y+10; wy<b.y+b.h-12; wy+=18) for(let wx=x+8; wx<x+w-10; wx+=16) ctx.fillRect(wx,wy,8,9); }
+  }
+}
+
+// ---- 치즈 고양이 🧀🐱 ----
+function drawCat(){
+  const x=LANES[S.lane];
+  const sliding=S.sliding>0, jumping=S.jumping;
+  const bob = (S.mode==='play'||S.mode==='special') && !jumping && !sliding ? Math.abs(Math.sin(S.anim*13))*5 : 0;
+  const gy=S.py;
+  // 그림자
+  ctx.fillStyle='rgba(91,58,30,.25)';
+  ctx.beginPath(); ctx.ellipse(x,GROUND+12,26,8,0,0,7); ctx.fill();
+
+  ctx.save();
+  ctx.translate(x, gy - bob);
+  if(sliding) { ctx.translate(0,16); ctx.scale(1.25,0.62); }
+  if(jumping) ctx.scale(0.94,1.1);
+  ctx.lineWidth=3.5; ctx.strokeStyle=INK; ctx.lineJoin='round';
+
+  // 꼬리 (살랑살랑)
+  const wag=Math.sin(S.anim*8)*0.5;
+  ctx.beginPath(); ctx.moveTo(16,-16);
+  ctx.quadraticCurveTo(38,-22+wag*10, 34,-44+wag*8);
+  ctx.lineWidth=9; ctx.strokeStyle=CAT.body; ctx.stroke();
+  ctx.lineWidth=3.5; ctx.strokeStyle=INK;
+  ctx.beginPath(); ctx.moveTo(16,-16); ctx.quadraticCurveTo(38,-22+wag*10, 34,-44+wag*8); ctx.stroke();
+
+  // 몸통
+  rr(-20,-26,40,26,10); ctx.fillStyle=CAT.body; ctx.fill(); ctx.stroke();
+  // 배 (크림)
+  rr(-10,-16,20,14,7); ctx.fillStyle=CAT.muzzle; ctx.fill();
+  // 발 (달리기 애니)
+  const step=Math.sin(S.anim*16)*3;
+  ctx.fillStyle=CAT.body;
+  rr(-16,-4+step*0.5,10,7,3); ctx.fill(); ctx.stroke();
+  rr(6,-4-step*0.5,10,7,3); ctx.fill(); ctx.stroke();
+
+  // 머리
+  const hy=-44;
+  ctx.beginPath(); ctx.arc(0,hy,22,0,7); ctx.fillStyle=CAT.body; ctx.fill(); ctx.stroke();
+  // 귀
+  for(const s of [-1,1]){
+    ctx.beginPath(); ctx.moveTo(s*8,hy-14); ctx.lineTo(s*20,hy-30); ctx.lineTo(s*20,hy-10); ctx.closePath();
+    ctx.fillStyle=CAT.body; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(s*11,hy-15); ctx.lineTo(s*17,hy-24); ctx.lineTo(s*17,hy-13); ctx.closePath();
+    ctx.fillStyle=CAT.ear; ctx.fill();
+  }
+  // 치즈 줄무늬
+  ctx.fillStyle=CAT.stripe;
+  rr(-3,hy-22,6,8,3); ctx.fill();
+  rr(-12,hy-20,5,7,2.5); ctx.fill();
+  rr(7,hy-20,5,7,2.5); ctx.fill();
+  // 주둥이
+  ctx.beginPath(); ctx.ellipse(0,hy+9,13,9,0,0,7); ctx.fillStyle=CAT.muzzle; ctx.fill();
+  // 볼터치
+  ctx.fillStyle=CAT.cheek;
+  ctx.beginPath(); ctx.ellipse(-14,hy+7,4.5,3,0,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(14,hy+7,4.5,3,0,0,7); ctx.fill();
+  // 눈 (슬라이드 중엔 감은 눈)
+  if(sliding){
+    ctx.lineWidth=3; ctx.beginPath();
+    ctx.arc(-8,hy+1,4,0.15*Math.PI,0.85*Math.PI); ctx.arc(8,hy+1,4,0.15*Math.PI,0.85*Math.PI); ctx.stroke();
+  } else {
+    for(const s of [-1,1]){
+      ctx.beginPath(); ctx.ellipse(s*8,hy,4.6,6,0,0,7); ctx.fillStyle='#fff'; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(s*8,hy+1.2,2.8,4,0,0,7); ctx.fillStyle=INK; ctx.fill();
+      ctx.beginPath(); ctx.arc(s*8-1.2,hy-1.5,1.2,0,7); ctx.fillStyle='#fff'; ctx.fill();
+    }
+  }
+  // 코 + 입
+  ctx.fillStyle='#ff8fab';
+  ctx.beginPath(); ctx.moveTo(0,hy+6); ctx.lineTo(-2.6,hy+3.6); ctx.lineTo(2.6,hy+3.6); ctx.closePath(); ctx.fill();
+  ctx.lineWidth=2.4; ctx.strokeStyle=INK;
+  ctx.beginPath(); ctx.moveTo(0,hy+6); ctx.quadraticCurveTo(-3,hy+10,-6,hy+8);
+  ctx.moveTo(0,hy+6); ctx.quadraticCurveTo(3,hy+10,6,hy+8); ctx.stroke();
+  // 수염
+  ctx.lineWidth=2;
+  for(const s of [-1,1]){ for(const dy of [-1,3]){
+    ctx.beginPath(); ctx.moveTo(s*13,hy+5+dy); ctx.lineTo(s*23,hy+3+dy*1.6); ctx.stroke(); } }
+  ctx.restore();
+}
+
+// ---- 장애물 ----
 function drawObstacle(o){
-  const x=laneX(o.lane);
-  if(o.type==='portal'){ ctx.fillStyle='#a855f7'; ctx.beginPath(); ctx.arc(x,o.y,26,0,7); ctx.fill();
-    ctx.fillStyle='#fff'; ctx.font='20px sans-serif'; ctx.textAlign='center'; ctx.fillText('🌀',x,o.y+7); return; }
-  if(o.type==='block'){ ctx.fillStyle='#ef4444'; ctx.fillRect(x-26,o.y-40,52,52); ctx.fillStyle='#fecaca'; ctx.font='10px sans-serif'; ctx.textAlign='center'; ctx.fillText('AD',x,o.y-10); }
-  if(o.type==='high'){ ctx.fillStyle='#f59e0b'; ctx.fillRect(x-30,o.y-46,60,14); } // 위 현수막→점프
-  if(o.type==='low'){ ctx.fillStyle='#3b82f6'; ctx.fillRect(x-30,o.y+2,60,14); }  // 아래→슬라이드
+  const x=LANES[o.lane];
+  ctx.lineWidth=4; ctx.strokeStyle=INK; ctx.lineJoin='round';
+  if(o.type==='portal'){
+    const r=28+Math.sin(S.anim*6)*3;
+    ctx.fillStyle='rgba(197,128,255,.35)'; ctx.beginPath(); ctx.arc(x,o.y,r+10,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(x,o.y,r,0,7); ctx.fillStyle='#b06cf0'; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x,o.y,r-10,0,7); ctx.fillStyle='#e3c2ff'; ctx.fill();
+    chunky('🌀',x,o.y+8,22,'#fff');
+    chunky('후원',x,o.y-r-8,13,'#fff','#8b4bd0');
+    return;
+  }
+  if(o.type==='block'){ // 세로 광고판: 기둥 + 빨간 간판
+    ctx.fillStyle='#9c7a4e'; rr(x-4,o.y-14,8,30,3); ctx.fill(); ctx.stroke();
+    rr(x-27,o.y-52,54,42,10); ctx.fillStyle='#ff6b57'; ctx.fill(); ctx.stroke();
+    rr(x-21,o.y-46,42,30,7); ctx.fillStyle='#ffe1d6'; ctx.fill();
+    chunky('AD!',x,o.y-24,15,'#ff6b57','#fff');
+  }
+  if(o.type==='high'){ // 낮은 현수막 → 점프!
+    ctx.fillStyle='#b98a54';
+    rr(x-32,o.y-26,7,30,3); ctx.fill(); ctx.stroke();
+    rr(x+25,o.y-26,7,30,3); ctx.fill(); ctx.stroke();
+    rr(x-30,o.y-24,60,18,6); ctx.fillStyle='#ffc93c'; ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#fff2c4'; for(let i=0;i<3;i++) ctx.fillRect(x-24+i*18,o.y-20,10,10);
+  }
+  if(o.type==='low'){ // 위에 걸린 현수막 → 슬라이드!
+    ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(x-30,o.y-64); ctx.lineTo(x-24,o.y-40);
+    ctx.moveTo(x+30,o.y-64); ctx.lineTo(x+24,o.y-40); ctx.stroke();
+    ctx.lineWidth=4;
+    rr(x-30,o.y-42,60,20,6); ctx.fillStyle='#5fa8f5'; ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#dcedff'; for(let i=0;i<3;i++) ctx.fillRect(x-24+i*18,o.y-38,10,12);
+  }
 }
+
+// ---- HUD ----
 function hud(){
   const distanceMeters=floor(S.distance/10);
   const live=distanceMeters + S.dodged*10 + S.comboBonus + S.nearMiss + S.specialScore;
-  ctx.fillStyle='#e2e8f0'; ctx.textAlign='left'; ctx.font='bold 16px sans-serif';
-  ctx.fillText(`${live.toLocaleString()}점`, 12, 26);
-  ctx.font='12px sans-serif'; ctx.fillStyle='#94a3b8';
-  ctx.fillText(`${distanceMeters}m · 콤보 ${S.combo} · ${(S.speed/16).toFixed(0)}km/h`, 12, 44);
-  ctx.textAlign='right'; ctx.fillStyle='#34d399';
-  ctx.fillText(`💝 ${floor(live*0.1).toLocaleString()}P`, W-12, 26);
+  panel(8,8,190,56,14);
+  ctx.textAlign='left'; ctx.fillStyle=INK; ctx.font='900 20px sans-serif';
+  ctx.fillText(`${live.toLocaleString()}점`, 20, 32);
+  ctx.font='700 12px sans-serif'; ctx.fillStyle='#8a6a45';
+  ctx.fillText(`${distanceMeters}m · 콤보 ${S.combo} · ${(S.speed/16).toFixed(0)}km/h`, 20, 52);
+  panel(W-110,8,102,36,12,'#e9f8ec');
+  ctx.textAlign='center'; ctx.fillStyle='#1f8a4c'; ctx.font='900 16px sans-serif';
+  ctx.fillText(`💝 ${floor(live*0.1).toLocaleString()}P`, W-59, 32);
 }
-function center(lines){
-  ctx.textAlign='center';
-  let y=200;
-  for(const [t,f,c] of lines){ ctx.fillStyle=c||'#e2e8f0'; ctx.font=f||'16px sans-serif'; ctx.fillText(t,W/2,y); y+= (parseInt(f)||16)+12; }
-}
+
+// ---- 렌더 ----
 function render(){
   ctx.clearRect(0,0,W,H);
-  // 레인 가이드
-  ctx.strokeStyle='rgba(148,163,184,.15)'; ctx.lineWidth=2;
-  for(const x of LANES){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
-  ctx.strokeStyle='rgba(148,163,184,.3)'; ctx.beginPath(); ctx.moveTo(0,GROUND+12); ctx.lineTo(W,GROUND+12); ctx.stroke();
+  drawCity(S.mode==='special');
 
   if(S.mode==='title'){
-    center([['🏃 킵고잉','bold 30px sans-serif','#fff'],['KeepGoing','18px sans-serif','#34d399'],
-      ['광고를 보지 않아도 되는 광고 게임','13px sans-serif','#94a3b8'],
-      ['','10px sans-serif'],['▶ Space / 화면 탭으로 시작','16px sans-serif','#e2e8f0']]);
+    ctx.fillStyle='rgba(91,58,30,.18)'; ctx.fillRect(0,0,W,H);
+    panel(40,150,320,330,26);
+    chunky('킵고잉', W/2, 232, 52, '#ffc93c');
+    chunky('KeepGoing', W/2, 268, 20, '#7ed99a');
+    ctx.font='700 14px sans-serif'; ctx.fillStyle='#8a6a45'; ctx.textAlign='center';
+    ctx.fillText('광고를 보지 않아도 되는 광고 게임', W/2, 298);
+    // 마스코트
+    ctx.save(); ctx.translate(0,-105); S.py=GROUND; drawCat(); ctx.restore();
+    const pulse = 0.6+Math.abs(Math.sin(S.anim*3))*0.4;
+    ctx.globalAlpha=pulse; chunky('▶ Space / 탭으로 시작', W/2, 452, 19, '#fff'); ctx.globalAlpha=1;
     return;
   }
+
   if(S.mode==='special'){
     const sp=S.special;
-    ctx.fillStyle='rgba(22,163,74,.12)'; ctx.fillRect(0,0,W,H);
-    for(const d of sp.drops){ const x=laneX(d.lane); const e={coin:'🪙',big:'📋',heart:'💚',gold:'🌟'}[d.kind];
-      ctx.font='26px sans-serif'; ctx.textAlign='center'; ctx.fillText(e,x,d.y); }
-    drawPlayer();
-    ctx.fillStyle='#34d399'; ctx.textAlign='center'; ctx.font='bold 16px sans-serif';
-    ctx.fillText(`⭐ 후원 스테이지 KEEP GREEN · ${sp.time.toFixed(1)}s`, W/2, 28);
-    ctx.font='12px sans-serif'; ctx.fillStyle='#94a3b8';
-    ctx.fillText('좌우로 이동해 브랜드 아이템 수집! (사망 없음)', W/2, 46);
-    ctx.fillStyle='#e2e8f0'; ctx.fillText(`특별점수 ${S.specialScore.toLocaleString()}`, W/2, 64);
+    for(const d of sp.drops){ const x=LANES[d.lane];
+      ctx.fillStyle='rgba(255,220,120,.45)'; ctx.beginPath(); ctx.arc(x,d.y-8,20,0,7); ctx.fill();
+      const e={coin:'🪙',big:'📋',heart:'💚',gold:'🌟'}[d.kind];
+      ctx.font='28px sans-serif'; ctx.textAlign='center'; ctx.fillText(e,x,d.y); }
+    drawCat();
+    panel(52,10,296,64,16,'#fff3d0');
+    chunky(`⭐ 후원 스테이지 KEEP GREEN`, W/2, 34, 15, '#ffc93c');
+    ctx.font='700 12px sans-serif'; ctx.fillStyle='#8a6a45'; ctx.textAlign='center';
+    ctx.fillText(`${sp.time.toFixed(1)}s · 브랜드 아이템 수집! (사망 없음) · 특별점수 ${S.specialScore.toLocaleString()}`, W/2, 60);
     return;
   }
+
   for(const o of S.obstacles) drawObstacle(o);
-  drawPlayer();
+  drawCat();
   hud();
+
   if(S.mode==='over'){
     const r=S.result;
-    ctx.fillStyle='rgba(2,6,23,.82)'; ctx.fillRect(0,0,W,H);
-    center([
-      ['GAME OVER','bold 26px sans-serif','#f87171'],
-      [`최종 ${r.gameScore.toLocaleString()}점`,'bold 22px sans-serif','#fff'],
-      [`이동 ${r.distanceMeters}m · 회피 ${S.dodged} · 최대콤보 ${S.maxCombo}`,'13px sans-serif','#94a3b8'],
-      [`특별 ${S.specialScore.toLocaleString()} (🪙${S.collected.coin} 📋${S.collected.big} 💚${S.collected.heart} 🌟${S.collected.gold})`,'13px sans-serif','#94a3b8'],
-      ['','8px sans-serif'],
-      [`💝 기부 포인트 ${r.donationPoints.toLocaleString()}P`,'bold 20px sans-serif','#34d399'],
-      [r.valid?'✅ 검증 통과 → 숲 복원 🌳 프로젝트에 반영':'❌ 검증 실패 → 미반영','13px sans-serif',r.valid?'#34d399':'#f87171'],
-      ['','8px sans-serif'],
-      ['▶ Space / 탭으로 다시하기','15px sans-serif','#e2e8f0'],
-    ]);
+    ctx.fillStyle='rgba(91,58,30,.45)'; ctx.fillRect(0,0,W,H);
+    panel(34,130,332,392,26);
+    // 리본 헤더
+    rr(84,108,232,52,16); ctx.fillStyle='#ff6b57'; ctx.fill(); ctx.lineWidth=4; ctx.strokeStyle=INK; ctx.stroke();
+    chunky('GAME OVER', W/2, 143, 24, '#fff');
+    chunky(`최종 ${r.gameScore.toLocaleString()}점`, W/2, 218, 30, '#ffc93c');
+    ctx.font='700 14px sans-serif'; ctx.fillStyle='#8a6a45'; ctx.textAlign='center';
+    ctx.fillText(`이동 ${r.distanceMeters}m · 회피 ${S.dodged} · 최대콤보 ${S.maxCombo}`, W/2, 252);
+    ctx.fillText(`특별 ${S.specialScore.toLocaleString()} (🪙${S.collected.coin} 📋${S.collected.big} 💚${S.collected.heart} 🌟${S.collected.gold})`, W/2, 276);
+    // 기부 포인트 알약
+    rr(70,300,260,54,27); ctx.fillStyle='#e9f8ec'; ctx.fill(); ctx.lineWidth=4; ctx.strokeStyle='#1f8a4c'; ctx.stroke();
+    chunky(`💝 기부 포인트 ${r.donationPoints.toLocaleString()}P`, W/2, 336, 20, '#1f8a4c', '#fff');
+    ctx.font='700 13px sans-serif'; ctx.textAlign='center';
+    ctx.fillStyle = r.valid ? '#1f8a4c' : '#d64545';
+    ctx.fillText(r.valid?'✅ 검증 통과 → 숲 복원 🌳 프로젝트에 반영':'❌ 검증 실패 → 미반영', W/2, 384);
+    ctx.fillStyle='#8a6a45'; ctx.font='600 11px sans-serif';
+    ctx.fillText('기부 포인트는 현금이 아니며, 시즌 기부금의 배분 기준입니다.', W/2, 410);
+    const pulse = 0.6+Math.abs(Math.sin(S.anim*3))*0.4;
+    ctx.globalAlpha=pulse; chunky('▶ Space / 탭으로 다시하기', W/2, 478, 17, '#fff'); ctx.globalAlpha=1;
   }
 }
 
