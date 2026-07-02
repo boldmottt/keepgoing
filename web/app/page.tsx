@@ -28,6 +28,14 @@ export default async function HomePage() {
         <p>{SITE_TAGLINE}.</p>
         <p>달리고, 피하고, 모으고, 점수를 얻으세요.</p>
         <p>그 점수가 실제 기부 프로젝트의 결과를 바꿉니다.</p>
+        <p className="hero-actions">
+          <Link href="/donations" className="btn">
+            💝 기부 현황 보기
+          </Link>
+          <Link href="/leaderboard" className="btn secondary">
+            🏆 리더보드
+          </Link>
+        </p>
       </section>
 
       <section className="section">
