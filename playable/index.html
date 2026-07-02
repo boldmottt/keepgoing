@@ -4,10 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>킵고잉 / KeepGoing — 플레이</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
 <style>
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { margin:0; height:100%; background:#fdeec9; color:#5b3a1e;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+    font-family:'Jua',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
   #wrap { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:14px;
     background:
       radial-gradient(circle at 15% 8%, rgba(255,255,255,.55) 0 90px, transparent 91px),
@@ -77,7 +80,7 @@ function makeScenery(){
       z: (i/26)*Z_SPAWN + Math.random()*80,
       w: 70+Math.random()*60, h: 130+Math.random()*150,
       c: BLDG[(Math.random()*BLDG.length)|0], off: 30+Math.random()*46,
-      lit: Math.random()<.5 });
+      lit: Math.random()<.5, deco: Math.random() });
   }
   return arr;
 }
@@ -94,6 +97,8 @@ function reset(){
       vx:12+Math.random()*20,vy:9+Math.random()*14,rot:Math.random()*7,
       c:Math.random()<.5?'#8fc97a':'#f0a35e'})),
     birds:[{x:-30,y:118,v:15},{x:170,y:86,v:11}],
+    motes:Array.from({length:14},()=>({x:Math.random()*W,y:230+Math.random()*380,
+      v:14+Math.random()*22,tw:Math.random()*7})),
   };
 }
 reset();
@@ -188,6 +193,8 @@ function update(dt){
   for(const l of S.leaves){ l.x+=l.vx*dt; l.y+=l.vy*dt; l.rot+=dt*3;
     if(l.x>W+16||l.y>H+16){ l.x=-12; l.y=Math.random()*H*0.5; } }
   for(const b of S.birds){ b.x+=b.v*dt; if(b.x>W+40){ b.x=-40; b.y=60+Math.random()*90; } }
+  for(const m of S.motes){ m.y-=m.v*dt; m.tw+=dt*3;
+    if(m.y<190){ m.y=H-20; m.x=Math.random()*W; } }
   if(S.scorePulse>0) S.scorePulse=Math.max(0,S.scorePulse-dt*3);
   if(cruising && !S.jumping && S.sliding<=0 && Math.random()<dt*9) puff(S.px+(Math.random()-.5)*10, PLAYER_Y+8, 1);
 
@@ -232,14 +239,14 @@ function plate(x,y,w,h,r,fill,ledge){
   rr(x+6,y+5,w-12,Math.min(15,h*0.2),r*0.55); ctx.fillStyle='rgba(255,255,255,.4)'; ctx.fill();
 }
 function chunky(text,x,y,size,fill,inner){
-  ctx.font=`900 ${size}px sans-serif`; ctx.textAlign='center'; ctx.lineJoin='round';
+  ctx.font=`900 ${size}px Jua,sans-serif`; ctx.textAlign='center'; ctx.lineJoin='round';
   ctx.lineWidth=Math.max(5,size/3.2); ctx.strokeStyle=INK; ctx.strokeText(text,x,y);
   if(inner){ ctx.lineWidth=Math.max(2.5,size/8); ctx.strokeStyle=inner; ctx.strokeText(text,x,y); }
   ctx.fillStyle=fill||'#fff'; ctx.fillText(text,x,y);
 }
 function logoText(text,x,y,size){
   ctx.save(); ctx.translate(x,y); ctx.rotate(-0.02);
-  ctx.font=`900 ${size}px sans-serif`; ctx.textAlign='center'; ctx.lineJoin='round';
+  ctx.font=`900 ${size}px Jua,sans-serif`; ctx.textAlign='center'; ctx.lineJoin='round';
   ctx.lineWidth=size/2.9; ctx.strokeStyle=INK; ctx.strokeText(text,0,0);
   ctx.lineWidth=size/7; ctx.strokeStyle='#fff'; ctx.strokeText(text,0,0);
   const g=ctx.createLinearGradient(0,-size,0,8);
@@ -278,6 +285,12 @@ function drawSky(sunset){
   // 스카이라인 2겹
   skyline(S.sky2, HORIZON+2, sunset?'#e8a06c':'#cfe2f4');
   skyline(S.sky1, HORIZON+2, sunset?'#c97f52':'#aec9e8');
+  // 지평선 헤이즈 (원경을 대기에 가라앉힘)
+  const hz=ctx.createLinearGradient(0,HORIZON-36,0,HORIZON+28);
+  hz.addColorStop(0,'rgba(255,244,214,0)');
+  hz.addColorStop(.7,sunset?'rgba(255,214,160,.5)':'rgba(255,244,214,.5)');
+  hz.addColorStop(1,'rgba(255,244,214,0)');
+  ctx.fillStyle=hz; ctx.fillRect(0,HORIZON-36,W,64);
 }
 function skyline(list, baseY, color){
   ctx.fillStyle=color;
@@ -301,6 +314,17 @@ function drawGroundRoad(sunset){
   ctx.moveTo(CX-ROAD_HALF*f.s, f.y); ctx.lineTo(CX+ROAD_HALF*f.s, f.y);
   ctx.lineTo(CX+ROAD_HALF*n.s, H+8); ctx.lineTo(CX-ROAD_HALF*n.s, H+8);
   ctx.closePath(); ctx.fill();
+  // 레인별 타이어 자국 (은은한 마모 트랙)
+  ctx.fillStyle='rgba(46,32,18,.07)';
+  for(const li of [0,1,2]) for(const sd of [-1,1]){
+    const q0=proj(6), q1=proj(Z_SPAWN);
+    const x0=laneX(li,q0.s)+sd*15*q0.s, x1=laneX(li,q1.s)+sd*15*q1.s;
+    const w0=6*q0.s, w1=6*q1.s;
+    ctx.beginPath();
+    ctx.moveTo(x0-w0,q0.y); ctx.lineTo(x0+w0,q0.y);
+    ctx.lineTo(x1+w1,q1.y); ctx.lineTo(x1-w1,q1.y);
+    ctx.closePath(); ctx.fill();
+  }
   // 연석
   ctx.lineWidth=4; ctx.strokeStyle=INK;
   edge(-1); edge(1);
@@ -377,6 +401,29 @@ function drawScenery(sunset){
             ctx.fillStyle = (b.lit && ((wx+wy)|0)%3===0) ? '#ffd977' : 'rgba(74,47,22,.30)';
             ctx.fillRect(wx,wy,cw,ch);
           }
+      }
+      // 디테일: 어닝 / 옥상 물탱크 / 실외기
+      if(p.s>0.3){
+        if(b.deco<0.4){ // 1층 스캘럽 어닝
+          const aw=w*0.78, ah=13*p.s, ax=x-aw/2, ay=p.y-25*p.s;
+          rr(ax,ay,aw,ah,4*p.s); ctx.fillStyle='#ff7f66'; ctx.fill(); ctx.stroke();
+          ctx.fillStyle='#fff2d9';
+          const seg=aw/4;
+          for(let i2=0;i2<4;i2+=2) ctx.fillRect(ax+i2*seg,ay,seg,ah);
+          ctx.fillStyle='#ff7f66';
+          for(let i2=0;i2<4;i2++){ ctx.beginPath();
+            ctx.arc(ax+seg*(i2+0.5), ay+ah, seg*0.5, 0, Math.PI); ctx.fill(); }
+        } else if(b.deco<0.7){ // 물탱크
+          const tx=x+w*0.16, ty=p.y-h-20*p.s;
+          rr(tx-8*p.s,ty,16*p.s,14*p.s,3*p.s); ctx.fillStyle='#cbb9a2'; ctx.fill(); ctx.stroke();
+          ctx.beginPath(); ctx.ellipse(tx,ty,8*p.s,3.4*p.s,0,0,7);
+          ctx.fillStyle='#e2d4bf'; ctx.fill(); ctx.stroke();
+        } else { // 실외기 2개
+          ctx.fillStyle='#b9c3cc';
+          for(const ox of [-w*0.22, w*0.1]){
+            rr(x+ox,p.y-h-13*p.s,13*p.s,8*p.s,2*p.s); ctx.fill(); ctx.stroke();
+          }
+        }
       }
     } else if(b.kind==='tree'){
       const s=p.s;
@@ -491,14 +538,14 @@ function drawDrop(d){
     ctx.save(); ctx.scale(Math.max(.25,sq),1);
     ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.fillStyle='#ffd23d'; ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.arc(0,0,r*0.62,0,7); ctx.fillStyle='#ffe9a1'; ctx.fill();
-    ctx.fillStyle='#e8a013'; ctx.font=`900 ${Math.max(8,13*s)}px sans-serif`; ctx.textAlign='center';
+    ctx.fillStyle='#e8a013'; ctx.font=`900 ${Math.max(8,13*s)}px Jua,sans-serif`; ctx.textAlign='center';
     ctx.fillText('K',0,4.5*s);
     ctx.restore();
   } else if(d.kind==='big'){
     const w=30*s,h=22*s;
     rr(-w/2,-h/2,w,h,4*s); ctx.fillStyle='#7ed99a'; ctx.fill(); ctx.stroke();
     rr(-w/2+4*s,-h/2+4*s,w-8*s,h-8*s,2.5*s); ctx.fillStyle='#eafff0'; ctx.fill();
-    ctx.fillStyle='#2e9e57'; ctx.font=`900 ${Math.max(7,10*s)}px sans-serif`; ctx.textAlign='center'; ctx.fillText('AD',0,3.4*s);
+    ctx.fillStyle='#2e9e57'; ctx.font=`900 ${Math.max(7,10*s)}px Jua,sans-serif`; ctx.textAlign='center'; ctx.fillText('AD',0,3.4*s);
   } else if(d.kind==='heart'){
     const r=12*s;
     ctx.beginPath();
@@ -671,14 +718,14 @@ function hud(){
   S.lastLive=live;
   plate(10,10,192,60,16);
   const fs=22*(1+S.scorePulse*0.16);
-  ctx.textAlign='left'; ctx.font=`900 ${fs}px sans-serif`;
+  ctx.textAlign='left'; ctx.font=`900 ${fs}px Jua,sans-serif`;
   ctx.lineWidth=5; ctx.lineJoin='round'; ctx.strokeStyle='#fff';
   ctx.strokeText(`${live.toLocaleString()}점`, 24, 36);
   ctx.fillStyle=INK; ctx.fillText(`${live.toLocaleString()}점`, 24, 36);
-  ctx.font='700 12px sans-serif'; ctx.fillStyle='#8a6a45';
+  ctx.font='700 12px Jua,sans-serif'; ctx.fillStyle='#8a6a45';
   ctx.fillText(`🏁 ${distanceMeters}m   🔥 ${S.combo}   💨 ${(S.speed/20*3.6).toFixed(0)}km/h`, 24, 58);
   plate(W-118,10,108,40,13,'#e9f8ec','#a8d3b4');
-  ctx.textAlign='center'; ctx.font='900 17px sans-serif'; ctx.fillStyle='#1f8a4c';
+  ctx.textAlign='center'; ctx.font='900 17px Jua,sans-serif'; ctx.fillStyle='#1f8a4c';
   ctx.fillText(`💝 ${floor(live*0.1).toLocaleString()}P`, W-64, 37);
 }
 function pill(text,y,size){
@@ -712,7 +759,7 @@ function render(){
     // 로고 카드
     plate(36,128,328,352,28);
     logoText('킵고잉', CX, 236, 60);
-    ctx.font='30px sans-serif'; ctx.textAlign='center'; ctx.fillText('🧀', CX-122, 244);
+    ctx.font='30px Jua,sans-serif'; ctx.textAlign='center'; ctx.fillText('🧀', CX-122, 244);
     // 반짝임
     for(let i=0;i<3;i++){
       const tw=Math.sin(S.anim*3+i*2.1)*0.5+0.5;
@@ -722,7 +769,7 @@ function render(){
     }
     ctx.globalAlpha=1;
     chunky('KeepGoing', CX, 272, 20, '#7ed99a', '#fff');
-    ctx.font='700 14px sans-serif'; ctx.fillStyle='#8a6a45'; ctx.textAlign='center';
+    ctx.font='700 14px Jua,sans-serif'; ctx.fillStyle='#8a6a45'; ctx.textAlign='center';
     ctx.fillText('광고를 보지 않아도 되는 광고 게임', CX, 300);
     ctx.save(); ctx.translate(0,-104); drawCat(); ctx.restore();
     pill('▶ 탭으로 시작!', 445, 19);
@@ -731,6 +778,14 @@ function render(){
 
   if(S.mode==='special'){
     const sp=S.special;
+    // 골드 모트 (황금빛 부유 입자)
+    for(const m of S.motes){
+      const a=(Math.sin(m.tw)*0.5+0.5)*0.55;
+      ctx.fillStyle=`rgba(255,222,120,${a})`;
+      ctx.beginPath(); ctx.arc(m.x,m.y,2.4,0,7); ctx.fill();
+      ctx.fillStyle=`rgba(255,246,200,${a*0.6})`;
+      ctx.beginPath(); ctx.arc(m.x,m.y,4.6,0,7); ctx.fill();
+    }
     const drops=[...sp.drops].sort((a,b)=>b.z-a.z);
     for(const d of drops) drawDrop(d);
     drawCat(); drawParts();
@@ -743,7 +798,7 @@ function render(){
       const g=ctx.createLinearGradient(67,0,67+tw,0); g.addColorStop(0,'#7ed99a'); g.addColorStop(1,'#3fbb6f');
       ctx.fillStyle=g; ctx.fill(); }
     plate(W-128,84,118,34,12,'#e9f8ec','#a8d3b4');
-    ctx.font='900 15px sans-serif'; ctx.fillStyle='#1f8a4c'; ctx.textAlign='center';
+    ctx.font='900 15px Jua,sans-serif'; ctx.fillStyle='#1f8a4c'; ctx.textAlign='center';
     ctx.fillText(`특별 ${S.specialScore.toLocaleString()}`, W-69, 107);
     if(S.flash>0){ ctx.fillStyle=`rgba(255,255,255,${S.flash})`; ctx.fillRect(-10,-10,W+20,H+20); }
     vignette(); ctx.restore(); return;
@@ -775,17 +830,17 @@ function render(){
       ctx.fillStyle=on?'#ffce3d':'#e4d6b8'; ctx.fill(); ctx.lineWidth=4; ctx.strokeStyle=INK; ctx.stroke(); ctx.restore();
     }
     chunky(`${r.gameScore.toLocaleString()}점`, CX, 268, 34, '#ffc93c');
-    ctx.font='700 13.5px sans-serif'; ctx.fillStyle='#8a6a45'; ctx.textAlign='center';
+    ctx.font='700 13.5px Jua,sans-serif'; ctx.fillStyle='#8a6a45'; ctx.textAlign='center';
     ctx.fillText(`🏁 ${r.distanceMeters}m · 🚧 회피 ${S.dodged} · 🔥 최대콤보 ${S.maxCombo}`, CX, 298);
     ctx.fillText(`⭐ 특별 ${S.specialScore.toLocaleString()} (🪙${S.collected.coin} 📋${S.collected.big} 💚${S.collected.heart} 🌟${S.collected.gold})`, CX, 320);
     // 기부 포인트 배지
     rr(64,342,272,56,28); ctx.fillStyle='#bfe4c8'; ctx.fill();
     rr(64,338,272,56,28); ctx.fillStyle='#e9f8ec'; ctx.fill(); ctx.lineWidth=4; ctx.strokeStyle='#1f8a4c'; ctx.stroke();
     chunky(`💝 기부 포인트 ${r.donationPoints.toLocaleString()}P`, CX, 375, 20, '#1f8a4c', '#fff');
-    ctx.font='700 13px sans-serif'; ctx.textAlign='center';
+    ctx.font='700 13px Jua,sans-serif'; ctx.textAlign='center';
     ctx.fillStyle = r.valid ? '#1f8a4c' : '#d64545';
     ctx.fillText(r.valid?'✅ 검증 통과 → 숲 복원 🌳 프로젝트에 반영':'❌ 검증 실패 → 미반영', CX, 424);
-    ctx.fillStyle='#a3865f'; ctx.font='600 11px sans-serif';
+    ctx.fillStyle='#a3865f'; ctx.font='600 11px Jua,sans-serif';
     ctx.fillText('기부 포인트는 현금이 아니며, 시즌 기부금의 배분 기준입니다.', CX, 446);
     pill('▶ 다시 달리기!', 495, 17);
   }
